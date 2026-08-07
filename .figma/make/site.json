@@ -1,0 +1,10 @@
+{
+  "description": "Showcase sneakers with an interactive 360-degree view, size selection, and customer reviews, enhancing the shopping experience for sneaker enthusiasts.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
