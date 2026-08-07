@@ -1,0 +1,6 @@
+import { useState } from "react";
+import { PageHeader } from "../../components/layout/PageHeader";
+import { Button } from "../../components/ui/Button";
+import { Card } from "../../components/ui/Card";
+export function SettingsPage() { const [notices,setNotices]=useState(true); return <><PageHeader title="Settings"/><main className="page settings-page"><Card><p className="eyebrow">Notifications</p><h3>Helpful, not noisy.</h3><Setting title="Gentle daily check-in" description="A small prompt to help you choose your focus." checked={notices} onClick={()=>setNotices(!notices)}/><Setting title="Upcoming deadlines" description="One reminder a day before important work is due." checked onClick={()=>{}}/></Card><Card><p className="eyebrow">Privacy & storage</p><h3>Your materials are yours.</h3><div className="storage"><span>1.8 GB of 5 GB used</span><div className="mini-progress"><i style={{width:"36%"}}/></div></div><Button variant="secondary">Manage uploads</Button></Card></main></>; }
+function Setting({title,description,checked,onClick}:{title:string;description:string;checked:boolean;onClick:()=>void}) { return <div className="setting-row"><div><strong>{title}</strong><p>{description}</p></div><button className={`toggle ${checked?"on":""}`} onClick={onClick} aria-label={`Toggle ${title}`}><i/></button></div>; }

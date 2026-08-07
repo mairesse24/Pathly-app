@@ -1,0 +1,6 @@
+import { useState } from "react";
+import { initialMessages } from "../../data/appData";
+import { createCompanionReply } from "../../services/mockCompanion";
+import { Icon } from "../ui/Icon";
+import type { ChatMessage } from "../../types/app";
+export function ChatPanel() { const [message,setMessage]=useState(""); const [messages,setMessages]=useState<ChatMessage[]>(initialMessages); const send=()=>{const text=message.trim(); if(!text)return; setMessages(current=>[...current,{id:crypto.randomUUID(),author:"You",text},createCompanionReply()]);setMessage("");}; return <section className="card chat-card"><div className="chat-log">{messages.map(item=><div className={`message ${item.author === "You" ? "from-user" : "from-pathly"}`} key={item.id}><div className="message-label">{item.author}</div><p>{item.text}</p>{item.source&&<small>{item.source}</small>}</div>)}</div><div className="suggestions"><button onClick={()=>setMessage("What should I study tonight?")}>What should I study tonight?</button><button onClick={()=>setMessage("Help me plan my week")}>Help me plan my week</button></div><div className="chat-input"><input value={message} onChange={e=>setMessage(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Ask Pathly anything…"/><button onClick={send} aria-label="Send message"><Icon name="send"/></button></div></section>; }
