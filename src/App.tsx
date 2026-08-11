@@ -14,9 +14,10 @@ import { AuthProvider } from "./context/AuthContext";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { AuthPage } from "./pages/Auth";
 import { OnboardingPage } from "./pages/Onboarding";
+import { AcademicDataProvider } from "./context/AcademicDataContext";
 
 export default function App() {
-  return <BrowserRouter><AuthProvider><AppProvider><Routes>
+  return <BrowserRouter><AuthProvider><AppProvider><AcademicDataProvider><Routes>
     <Route path="/" element={<LandingPage />} />
     <Route path="/auth" element={<AuthPage />} />
     <Route element={<ProtectedRoute />}>
@@ -33,5 +34,5 @@ export default function App() {
       </Route>
     </Route>
     <Route path="*" element={<Navigate to="/" replace />} />
-  </Routes></AppProvider></AuthProvider></BrowserRouter>;
+  </Routes></AcademicDataProvider></AppProvider></AuthProvider></BrowserRouter>;
 }
