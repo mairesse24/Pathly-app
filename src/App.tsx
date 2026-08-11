@@ -10,11 +10,18 @@ import { CompanionPage } from "./pages/Companion";
 import { UploadCenterPage } from "./pages/UploadCenter";
 import { ProfilePage } from "./pages/Profile";
 import { SettingsPage } from "./pages/Settings";
+import { AuthProvider } from "./context/AuthContext";
+import { ProtectedRoute } from "./components/auth/ProtectedRoute";
+import { AuthPage } from "./pages/Auth";
+import { OnboardingPage } from "./pages/Onboarding";
 
 export default function App() {
-  return <BrowserRouter><AppProvider><Routes>
+  return <BrowserRouter><AuthProvider><AppProvider><Routes>
     <Route path="/" element={<LandingPage />} />
-    <Route element={<AppShell />}>
+    <Route path="/auth" element={<AuthPage />} />
+    <Route element={<ProtectedRoute />}>
+      <Route path="/onboarding" element={<OnboardingPage />} />
+      <Route element={<AppShell />}>
       <Route path="/dashboard" element={<DashboardPage />} />
       <Route path="/study" element={<StudyHubPage />} />
       <Route path="/calendar" element={<CalendarPage />} />
@@ -23,7 +30,8 @@ export default function App() {
       <Route path="/uploads" element={<UploadCenterPage />} />
       <Route path="/profile" element={<ProfilePage />} />
       <Route path="/settings" element={<SettingsPage />} />
+      </Route>
     </Route>
     <Route path="*" element={<Navigate to="/" replace />} />
-  </Routes></AppProvider></BrowserRouter>;
+  </Routes></AppProvider></AuthProvider></BrowserRouter>;
 }
