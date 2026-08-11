@@ -167,19 +167,19 @@ Let's make today feel a little lighter.
 
 Today's Focus
 
-① Biology Lab Report
+① CSCE 1030 — Programming Assignment 4
 
 90 min
 
 ──────────────
 
-② Review Photosynthesis
+② CSCE 3201 — Review neural network concepts
 
 45 min
 
 ──────────────
 
-③ History Reading
+③ MATH 1710 — Calculus practice set
 
 30 min
 

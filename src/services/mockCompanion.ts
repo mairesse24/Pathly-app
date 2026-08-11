@@ -1,2 +1,2 @@
 import type { ChatMessage } from "../types/app";
-export function createCompanionReply(): ChatMessage { return { id: crypto.randomUUID(), author:"Pathly", text:"I’d start with 45 minutes on your Biology Lab Report, then take a real break. If you still have energy, review the photosynthesis summary—nothing more is needed tonight.", source:"Based on: BIO 214 Lab Report · due today" }; }
+export function createCompanionReply(): ChatMessage { return { id: crypto.randomUUID(), author:"Pathly", text:"I’d start with 45 minutes on Programming Assignment 4, then take a real break. If you still have energy, review the CSCE 3201 neural networks summary—nothing more is needed tonight.", source:"Based on: CSCE 1030 Programming Assignment 4 · due today" }; }
