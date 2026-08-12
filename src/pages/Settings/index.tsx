@@ -1,61 +1,11 @@
-import { useEffect, useState } from "react"
-import { PageHeader } from "../../components/layout/PageHeader"
-import { Card } from "../../components/ui/Card"
-import {
-  getProfileMetadata,
-  type ProfileMetadata,
-} from "../../services/profiles"
+import { useEffect, useState, type FormEvent } from "react";
+import { PageHeader } from "../../components/layout/PageHeader";
+import { AcademicDetailsFields } from "../../components/profile/AcademicDetailsFields";
+import { Button } from "../../components/ui/Button";
+import { Card } from "../../components/ui/Card";
+import { getProfileMetadata, updateAcademicDetails, type AcademicDetailsInput, type ProfileMetadata } from "../../services/profiles";
 
-export function SettingsPage() {
-  const [profile, setProfile] = useState<ProfileMetadata | null>(null)
-  const [error, setError] = useState("")
-  useEffect(() => {
-    getProfileMetadata()
-      .then(setProfile)
-      .catch((reason: unknown) =>
-        setError(
-          reason instanceof Error
-            ? reason.message
-            : "Unable to load academic details",
-        ),
-      )
-  }, [])
-  return (
-    <>
-      <PageHeader title="Settings" />
-      <main className="page settings-page">
-        <Card>
-          <p className="eyebrow">Academic details</p>
-          <h3>Information you provided</h3>
-          {error ? (
-            <p className="form-message">{error}</p>
-          ) : profile ? (
-            <div className="facts-list">
-              <Fact
-                label="Your university"
-                value={profile.university || "Not provided"}
-              />
-              <Fact label="Major" value={profile.major || "Not provided"} />
-              <Fact
-                label="Expected graduation"
-                value={profile.graduation_year?.toString() || "Not provided"}
-              />
-              <Fact label="Catalog year" value="Not provided" />
-            </div>
-          ) : (
-            <p>Loading your details…</p>
-          )}
-          <p>Academic details help Pathly personalize your experience.</p>
-        </Card>
-      </main>
-    </>
-  )
-}
-function Fact({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <small>{label}</small>
-      <strong>{value}</strong>
-    </div>
-  )
-}
+const emptyDetails:AcademicDetailsInput={university:"",major:"",catalog_year:null,expected_graduation_term:null,graduation_year:null};
+export function SettingsPage(){const [profile,setProfile]=useState<ProfileMetadata|null>(null),[details,setDetails]=useState<AcademicDetailsInput>(emptyDetails),[editing,setEditing]=useState(false),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[message,setMessage]=useState(""),[error,setError]=useState("");useEffect(()=>{getProfileMetadata().then(data=>{setProfile(data);setDetails(data)}).catch(reason=>setError(reason instanceof Error?reason.message:"Unable to load academic details")).finally(()=>setLoading(false))},[]);const hasDetails=Boolean(profile&&(profile.university||profile.major||profile.graduation_year||profile.expected_graduation_term||profile.catalog_year));async function save(event:FormEvent){event.preventDefault();setSaving(true);setError("");setMessage("");try{const saved=await updateAcademicDetails(details);setProfile(saved);setDetails(saved);setEditing(false);setMessage("Academic details saved.")}catch(reason){setError(reason instanceof Error?reason.message:"Unable to save academic details")}finally{setSaving(false)}}return <><PageHeader title="Settings"/><main className="page settings-page"><Card><p className="eyebrow">Academic details</p><h3>{editing?"Update your academic details":"Information you provided"}</h3>{loading?<p>Loading your details…</p>:editing?<form className="academic-details-form" onSubmit={save}><AcademicDetailsFields value={details} onChange={setDetails}/>{error&&<p className="form-message" role="alert">{error}</p>}<div className="form-actions"><Button type="submit" disabled={saving}>{saving?"Saving…":"Save academic details"}</Button><Button type="button" variant="quiet" onClick={()=>{setDetails(profile??emptyDetails);setEditing(false);setError("")}}>Cancel</Button></div></form>:<><div className="facts-list"><Fact label="Your university" value={profile?.university||"Not provided"}/><Fact label="Major" value={profile?.major||"Not provided"}/><Fact label="Expected graduation" value={formatGraduation(profile)}/><Fact label="Catalog year" value={profile?.catalog_year?.toString()||"Not provided"}/></div>{!hasDetails&&<p>Complete your academic details to help Pathly personalize your experience.</p>}<Button onClick={()=>{setEditing(true);setMessage("")}}>{hasDetails?"Edit academic details":"Add academic details"}</Button></>}{message&&<p className="save-success" role="status">{message}</p>}{error&&!editing&&<p className="form-message" role="alert">{error}</p>}</Card></main></>}
+function formatGraduation(profile:ProfileMetadata|null){if(!profile?.graduation_year&&!profile?.expected_graduation_term)return "Not provided";return [profile.expected_graduation_term,profile.graduation_year].filter(Boolean).join(" ")}
+function Fact({label,value}:{label:string;value:string}){return <div><small>{label}</small><strong>{value}</strong></div>}

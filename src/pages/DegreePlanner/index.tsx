@@ -47,10 +47,9 @@ export function DegreePlannerPage() {
             <>
               <h3>{profile?.major || "Major not added"}</h3>
               <p>{profile?.university || "University not added"}</p>
-              {profile?.graduation_year && (
+              {(profile?.graduation_year || profile?.expected_graduation_term) && (
                 <p>
-                  Expected graduation year: {profile.graduation_year} (provided by
-                  you; not a Pathly prediction)
+                  Expected graduation: {[profile.expected_graduation_term, profile.graduation_year].filter(Boolean).join(" ")} (provided by you; not a Pathly prediction)
                 </p>
               )}
             </>

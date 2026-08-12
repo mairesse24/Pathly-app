@@ -11,6 +11,8 @@ type Profile = {
   university: string
   major: string
   graduation_year: number | null
+  catalog_year: number | null
+  expected_graduation_term: "Spring" | "Summer" | "Fall" | "Winter" | null
 }
 
 export function ProfilePage() {
@@ -20,6 +22,8 @@ export function ProfilePage() {
       university: "",
       major: "",
       graduation_year: null,
+      catalog_year: null,
+      expected_graduation_term: null,
     }),
     [editing, setEditing] = useState(false),
     [message, setMessage] = useState("")
@@ -27,7 +31,7 @@ export function ProfilePage() {
     if (!user) return
     supabase
       .from("profiles")
-      .select("full_name,university,major,graduation_year")
+      .select("full_name,university,major,graduation_year,catalog_year,expected_graduation_term")
       .eq("id", user.id)
       .single()
       .then(({ data, error }) => {
@@ -130,8 +134,8 @@ export function ProfilePage() {
           <h3>{profile.university || "University not provided"}</h3>
           <p>
             {profile.major || "Major not provided"}
-            {profile.graduation_year
-              ? ` · Expected graduation ${profile.graduation_year}`
+            {profile.graduation_year || profile.expected_graduation_term
+              ? ` · Expected graduation ${[profile.expected_graduation_term, profile.graduation_year].filter(Boolean).join(" ")}`
               : ""}
           </p>
           <Button variant="quiet" onClick={() => void signOut()}>
