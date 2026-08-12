@@ -36,6 +36,10 @@ export function UploadCenterPage() {
   const [message, setMessage] = useState("")
   const inputRef = useRef<HTMLInputElement>(null)
 
+  function openFilePicker() {
+    inputRef.current?.click()
+  }
+
   useEffect(() => {
     listUploads().then(setFiles).catch((reason: unknown) => {
       setState("error")
@@ -94,7 +98,9 @@ export function UploadCenterPage() {
 
   return <><PageHeader title="Upload center"/><main className="page">
     <div className="intro-row"><div><h2>Add your source materials.</h2><p>Files stay private to your account. Pathly does not analyze them yet.</p></div></div>
-    <Card className="upload-zone">
+    <Card className="upload-zone" onClick={(event) => {
+      if (!(event.target as HTMLElement).closest("button, input, select, label")) openFilePicker()
+    }}>
       <div className="upload-graphic"><Icon name="upload" size={32}/></div>
       <h3>Upload a file</h3><p>PDF, PPTX, DOCX, PNG, JPG, or JPEG · 25 MB maximum</p>
       <div className="upload-fields">
@@ -102,8 +108,9 @@ export function UploadCenterPage() {
           {Object.entries(labels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </select></label>
         {(category === "syllabus" || category === "lecture") && <label>Course<select value={courseId} onChange={(event) => setCourseId(event.target.value)}><option value="">Select a course</option>{courses.map((course) => <option key={course.id} value={course.id}>{course.course_code} — {course.course_name}</option>)}</select></label>}
-        <input ref={inputRef} type="file" accept=".pdf,.pptx,.docx,.png,.jpg,.jpeg" onChange={(event) => choose(event.target.files?.[0] ?? null)}/>
+        <input id="source-file" ref={inputRef} className="visually-hidden-file" type="file" aria-label="Choose a source file" accept=".pdf,.pptx,.docx,.png,.jpg,.jpeg" onChange={(event) => choose(event.target.files?.[0] ?? null)}/>
       </div>
+      <Button type="button" variant="secondary" onClick={openFilePicker}>Choose file</Button>
       {file && <p><strong>Selected:</strong> {file.name} · {formatBytes(file.size)}</p>}
       {sensitive && <p className="privacy-notice"><strong>Sensitive academic record.</strong> Only you can access this source file. You can delete it at any time. No course data or degree progress will be extracted until a future review-and-confirm workflow is available.</p>}
       <Button onClick={upload} disabled={!file || state === "uploading"}>{state === "uploading" ? "Uploading…" : "Upload file"}</Button>
