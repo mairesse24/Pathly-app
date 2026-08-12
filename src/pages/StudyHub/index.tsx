@@ -1,9 +1,90 @@
-import { useNavigate } from "react-router-dom";
-import { PageHeader } from "../../components/layout/PageHeader";
-import { CourseCard } from "../../components/study/CourseCard";
-import { Badge } from "../../components/ui/Badge";
-import { Button } from "../../components/ui/Button";
-import { Card } from "../../components/ui/Card";
-import { Icon } from "../../components/ui/Icon";
-import { courses, studyMaterials } from "../../data/appData";
-export function StudyHubPage() { const navigate=useNavigate(); return <><PageHeader title="Study hub"/><main className="page"><div className="intro-row"><div><h2>Learn in the way that helps it stick.</h2><p>Everything from your courses, made easier to return to.</p></div><Button onClick={()=>navigate("/uploads")}><Icon name="plus" size={17}/> Upload lecture</Button></div><div className="course-grid">{courses.map(course=><CourseCard course={course} key={course.code}/>)}</div><section className="materials"><div className="section-title"><div><p className="eyebrow">Recently added</p><h2>Your study materials</h2></div></div><div className="material-grid">{studyMaterials.map(item=><Card key={item.title} className="material-card"><div className={`file-icon ${item.tone}`}><Icon name="file"/></div><div><Badge tone="gray">{item.type}</Badge><h3>{item.title}</h3><p>{item.detail}</p></div><button className="round-arrow" aria-label={`Open ${item.title}`}><Icon name="arrow" size={17}/></button></Card>)}</div></section></main></>; }
+import { useState, type FormEvent } from "react"
+import { useNavigate } from "react-router-dom"
+import { PageHeader } from "../../components/layout/PageHeader"
+import { CourseCard } from "../../components/study/CourseCard"
+import { Button } from "../../components/ui/Button"
+import { Card } from "../../components/ui/Card"
+import { useAcademicData } from "../../context/AcademicDataContext"
+export function StudyHubPage() {
+  const navigate = useNavigate()
+  const tones = ["sage", "gold", "clay"] as const
+  const { courses, assignments, loading, addCourse } = useAcademicData()
+  const [adding, setAdding] = useState(false),
+    [code, setCode] = useState(""),
+    [name, setName] = useState(""),
+    [error, setError] = useState("")
+  async function submit(e: FormEvent) {
+    e.preventDefault()
+    try {
+      await addCourse({ course_code: code, course_name: name })
+      setCode("")
+      setName("")
+      setAdding(false)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unable to add course")
+    }
+  }
+  return (
+    <>
+      <PageHeader title="Study hub" />
+      <main className="page">
+        <div className="intro-row">
+          <div>
+            <h2>Learn in the way that helps it stick.</h2>
+            <p>Your current courses, saved securely to your account.</p>
+          </div>
+          <Button onClick={() => setAdding(!adding)}>+ Add course</Button>
+        </div>
+        {adding && (
+          <Card>
+            <form className="inline-form" onSubmit={submit}>
+              <input
+                aria-label="Course code"
+                placeholder="CSCE 1030"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                required
+              />
+              <input
+                aria-label="Course name"
+                placeholder="Programming Fundamentals"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+              />
+              <Button type="submit">Save course</Button>
+            </form>
+            {error && <p className="form-message">{error}</p>}
+          </Card>
+        )}
+        <div className="course-grid academic-course-grid">
+          {loading ? (
+            <p>Loading courses…</p>
+          ) : courses.length ? (
+            courses.map((course, index) => (
+              <CourseCard
+                onOpen={() => navigate(`/study/${course.id}`)}
+                course={{
+                  code: course.course_code,
+                  name: course.course_name,
+                  color: tones[index % 3],
+                  next:
+                    assignments.find(
+                      (a) =>
+                        a.course_id === course.id && a.status !== "completed",
+                    )?.title ?? "Nothing due soon",
+                }}
+                key={course.id}
+              />
+            ))
+          ) : (
+            <Card>
+              <h3>No courses yet</h3>
+              <p>Add your first course to start building your study hub.</p>
+            </Card>
+          )}
+        </div>
+      </main>
+    </>
+  )
+}

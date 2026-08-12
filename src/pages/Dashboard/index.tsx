@@ -1,11 +1,280 @@
-import { useNavigate } from "react-router-dom";
-import { FocusItem } from "../../components/dashboard/FocusItem";
-import { PageHeader } from "../../components/layout/PageHeader";
-import { Badge } from "../../components/ui/Badge";
-import { Button } from "../../components/ui/Button";
-import { Card } from "../../components/ui/Card";
-import { Icon } from "../../components/ui/Icon";
-import { useFocusTasks } from "../../hooks/useFocusTasks";
-import { dashboardExam, demoStudent, upcomingSchedule } from "../../data/appData";
-export function DashboardPage() { const {tasks,completed,toggle}=useFocusTasks(); const navigate=useNavigate(); return <><PageHeader title={`Good morning, ${demoStudent.firstName}.`}/><main className="page dashboard"><div className="welcome"><div><p className="calm-line">Let’s make today feel a little lighter.</p><h2>Here’s what matters today.</h2></div><div className="weather"><Icon name="sun" size={22}/><span>52°</span><small>Clear & quiet</small></div></div><div className="dashboard-grid"><Card className="focus-card"><div className="card-heading"><div><p className="eyebrow">Today’s focus</p><h3>Three things is enough.</h3></div><Badge>{completed.length}/3 complete</Badge></div><div className="focus-list">{tasks.map((task,index)=><FocusItem key={task.id} task={task} number={index+1} completed={completed.includes(task.id)} onToggle={()=>toggle(task.id)}/>)}</div><div className="focus-footer"><span>Everything else can wait.</span><div className="mini-progress"><i style={{width:`${completed.length/tasks.length*100}%`}}/></div></div></Card><aside className="side-stack"><Card className="exam-card"><div className="exam-icon"><Icon name="file"/></div><p className="eyebrow">Upcoming exam</p><h3>{dashboardExam.title}</h3><p>{dashboardExam.date}</p><div className="exam-footer"><Badge tone="gold">{dashboardExam.countdown}</Badge><button onClick={()=>navigate("/study")} className="text-button">Review plan <Icon name="arrow" size={16}/></button></div></Card><Card className="study-card"><p className="eyebrow">Study session</p><h3>Ready when you are.</h3><p>A 25-minute focus block for Programming Assignment 4.</p><Button onClick={()=>navigate("/companion")}><Icon name="play" size={15}/> Start focus</Button></Card></aside></div><div className="lower-grid"><Card><div className="card-heading"><div><p className="eyebrow">Coming up</p><h3>Gentle heads-up</h3></div><button onClick={()=>navigate("/calendar")} className="text-button">View calendar <Icon name="arrow" size={16}/></button></div><div className="schedule-list">{upcomingSchedule.map(item=><div key={item.time}><b>{item.time}</b><span className={`event-dot ${item.tone}`}/><p><strong>{item.title}</strong><small>{item.location}</small></p></div>)}</div></Card><ReflectionCard/></div></main></>; }
-function ReflectionCard() { return <Card className="reflection"><p className="eyebrow">Daily reflection</p><h3>How are you feeling today?</h3><div className="moods">{["😣","😕","🙂","😊","🌿"].map((mood,index)=><button key={mood} className={index===2?"selected":""} aria-label={`Mood ${mood}`}>{mood}</button>)}</div><textarea aria-label="Reflection note" placeholder="A win from CSCE 1030, or a note for tomorrow? (optional)"/><Button>Save reflection</Button></Card>; }
+import { useEffect, useState } from "react"
+import { useNavigate } from "react-router-dom"
+import { FocusItem } from "../../components/dashboard/FocusItem"
+import { PageHeader } from "../../components/layout/PageHeader"
+import { Badge } from "../../components/ui/Badge"
+import { Button } from "../../components/ui/Button"
+import { Card } from "../../components/ui/Card"
+import { Icon } from "../../components/ui/Icon"
+import { useAcademicData } from "../../context/AcademicDataContext"
+import { useAuth } from "../../context/AuthContext"
+const sameDay = (value: string | null) =>
+  value ? new Date(value).toDateString() === new Date().toDateString() : false
+const needsConfirmation = (dueAt: string | null) =>
+  Boolean(dueAt && new Date(dueAt) < new Date() && !sameDay(dueAt))
+export function DashboardPage() {
+  const { user } = useAuth()
+  const {
+    assignments,
+    courses,
+    exams,
+    studySessions,
+    reflection,
+    loading,
+    error,
+    setAssignmentStatus,
+    persistReflection,
+  } = useAcademicData()
+  const navigate = useNavigate()
+  const active = assignments.filter((a) => a.status !== "completed")
+  const focus = active
+    .filter(
+      (a) =>
+        sameDay(a.due_at) ||
+        needsConfirmation(a.due_at) ||
+        a.status === "overdue" ||
+        a.status === "awaiting_confirmation",
+    )
+    .slice(0, 3)
+  const nextExam = exams.find(
+    (e) => e.exam_at && new Date(e.exam_at) >= new Date(),
+  )
+  const todaySessions = studySessions.filter(
+    (s) => sameDay(s.start_at) && s.status === "scheduled",
+  )
+  const completed = assignments.filter((a) => a.status === "completed").length
+  const courseName = (id: string) =>
+    courses.find((c) => c.id === id)?.course_code ?? "Course"
+  return (
+    <>
+      <PageHeader
+        title={`Good morning, ${user?.user_metadata.full_name?.split(" ")[0] ?? "student"}.`}
+      />
+      <main className="page dashboard">
+        <div className="welcome">
+          <div>
+            <p className="calm-line">Let’s make today feel a little lighter.</p>
+            <h2>Here’s what matters today.</h2>
+          </div>
+        </div>
+        {error && <p className="form-message">{error}</p>}
+        <div className="dashboard-grid">
+          <Card className="focus-card">
+            <div className="card-heading">
+              <div>
+                <p className="eyebrow">Today’s focus</p>
+                <h3>Three things is enough.</h3>
+              </div>
+              <Badge>{completed} complete</Badge>
+            </div>
+            <div className="focus-list">
+              {loading ? (
+                <p>Loading your work…</p>
+              ) : focus.length ? (
+                focus.map((a, index) => (
+                  <FocusItem
+                    key={a.id}
+                    number={index + 1}
+                    completed={false}
+                    onToggle={() => void setAssignmentStatus(a.id, "completed")}
+                    task={{
+                      id: a.id,
+                      title: `${courseName(a.course_id)} — ${a.title}`,
+                      detail:
+                        a.status === "overdue" || needsConfirmation(a.due_at)
+                          ? "Overdue — confirm when complete"
+                          : (a.description ?? "Due today"),
+                      duration: a.estimated_minutes
+                        ? `${a.estimated_minutes} min`
+                        : "Flexible",
+                    }}
+                  />
+                ))
+              ) : (
+                <p>No assignments need your attention today.</p>
+              )}
+            </div>
+            <div className="focus-footer">
+              <span>Everything else can wait.</span>
+            </div>
+          </Card>
+          <aside className="side-stack">
+            <Card className="exam-card">
+              <div className="exam-icon">
+                <Icon name="file" />
+              </div>
+              <p className="eyebrow">Upcoming exam</p>
+              {nextExam ? (
+                <>
+                  <h3>
+                    {courseName(nextExam.course_id)} — {nextExam.title}
+                  </h3>
+                  <p>
+                    {nextExam.exam_at &&
+                      new Date(nextExam.exam_at).toLocaleString()}
+                  </p>
+                  <div className="exam-footer">
+                    <button
+                      onClick={() => navigate("/study")}
+                      className="text-button"
+                    >
+                      Review plan <Icon name="arrow" size={16} />
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <p>No upcoming exams.</p>
+              )}
+            </Card>
+            <Card className="study-card">
+              <p className="eyebrow">Today’s study sessions</p>
+              {todaySessions.length ? (
+                todaySessions.map((s) => (
+                  <div key={s.id}>
+                    <h3>{s.title}</h3>
+                    <p>
+                      {new Date(s.start_at).toLocaleTimeString([], {
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}
+                    </p>
+                  </div>
+                ))
+              ) : (
+                <p>No sessions scheduled today.</p>
+              )}
+            </Card>
+          </aside>
+        </div>
+        <div className="lower-grid">
+          <Card>
+            <div className="card-heading">
+              <div>
+                <p className="eyebrow">Coming up</p>
+                <h3>Gentle heads-up</h3>
+              </div>
+              <button
+                onClick={() => navigate("/calendar")}
+                className="text-button"
+              >
+                View calendar <Icon name="arrow" size={16} />
+              </button>
+            </div>
+            <div className="schedule-list">
+              {active
+                .filter((a) => !sameDay(a.due_at))
+                .slice(0, 4)
+                .map((a) => (
+                  <div key={a.id}>
+                    <b>
+                      {a.due_at
+                        ? new Date(a.due_at).toLocaleDateString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                          })
+                        : "Soon"}
+                    </b>
+                    <span className="event-dot sage" />
+                    <p>
+                      <strong>{a.title}</strong>
+                      <small>
+                        {courseName(a.course_id)} ·{" "}
+                        {a.status.replace(/_/g, " ")}
+                      </small>
+                    </p>
+                  </div>
+                ))}
+              {!active.length && <p>You’re all caught up.</p>}
+            </div>
+          </Card>
+          <ReflectionCard
+            initialMood={reflection?.mood ?? ""}
+            initialNotes={reflection?.notes ?? ""}
+            onSave={persistReflection}
+          />
+        </div>
+      </main>
+    </>
+  )
+}
+function ReflectionCard({
+  initialMood,
+  initialNotes,
+  onSave,
+}: {
+  initialMood: string
+  initialNotes: string
+  onSave: (m: string, n: string) => Promise<unknown>
+}) {
+  const [mood, setMood] = useState(initialMood),
+    [notes, setNotes] = useState(initialNotes),
+    [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">(
+      "idle",
+    ),
+    [saveError, setSaveError] = useState("")
+  useEffect(() => {
+    setMood(initialMood)
+    setNotes(initialNotes)
+  }, [initialMood, initialNotes])
+  async function save() {
+    setStatus("saving")
+    setSaveError("")
+    try {
+      await onSave(mood, notes)
+      setStatus("saved")
+    } catch (reason) {
+      setStatus("error")
+      setSaveError(
+        reason instanceof Error ? reason.message : "Unable to save reflection",
+      )
+    }
+  }
+  const moods = ["strained", "low", "steady", "good", "rested"]
+  return (
+    <Card className="reflection">
+      <p className="eyebrow">Daily reflection</p>
+      <h3>How are you feeling today?</h3>
+      <div className="moods">
+        {moods.map((m) => (
+          <button
+            key={m}
+            className={mood === m ? "selected" : ""}
+            onClick={() => {
+              setMood(m)
+              setStatus("idle")
+            }}
+            aria-label={`Mood ${m}`}
+          >
+            {m.slice(0, 1).toUpperCase()}
+          </button>
+        ))}
+      </div>
+      <textarea
+        value={notes}
+        onChange={(e) => {
+          setNotes(e.target.value)
+          setStatus("idle")
+        }}
+        aria-label="Reflection note"
+        placeholder="A small win, or a note for tomorrow?"
+      />
+      <Button onClick={() => void save()} disabled={status === "saving"}>
+        {status === "saving"
+          ? "Saving…"
+          : status === "saved"
+            ? "Saved for today"
+            : "Save reflection"}
+      </Button>
+      {status === "saved" && (
+        <p className="save-success" role="status">
+          Your reflection is saved.
+        </p>
+      )}
+      {status === "error" && (
+        <p className="form-message" role="alert">
+          {saveError}
+        </p>
+      )}
+    </Card>
+  )
+}
