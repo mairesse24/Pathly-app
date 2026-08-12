@@ -1,11 +1,13 @@
 import { useState, type FormEvent } from "react"
+import { useNavigate } from "react-router-dom"
 import { PageHeader } from "../../components/layout/PageHeader"
 import { CourseCard } from "../../components/study/CourseCard"
 import { Button } from "../../components/ui/Button"
 import { Card } from "../../components/ui/Card"
 import { useAcademicData } from "../../context/AcademicDataContext"
 export function StudyHubPage() {
-  const tones = ["sage", "gold", "clay"] as const;
+  const navigate = useNavigate()
+  const tones = ["sage", "gold", "clay"] as const
   const { courses, assignments, loading, addCourse } = useAcademicData()
   const [adding, setAdding] = useState(false),
     [code, setCode] = useState(""),
@@ -61,6 +63,7 @@ export function StudyHubPage() {
           ) : courses.length ? (
             courses.map((course, index) => (
               <CourseCard
+                onOpen={() => navigate(`/study/${course.id}`)}
                 course={{
                   code: course.course_code,
                   name: course.course_name,

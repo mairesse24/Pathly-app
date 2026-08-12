@@ -37,10 +37,14 @@ type Value = {
     id: string,
     status: AssignmentRecord["status"],
   ) => Promise<void>
-  persistReflection: (mood: string, notes: string) => Promise<void>
+  persistReflection: (mood: string, notes: string) => Promise<ReflectionRecord>
 }
 const Context = createContext<Value | undefined>(undefined)
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => {
+  const date = new Date()
+  const offset = date.getTimezoneOffset() * 60_000
+  return new Date(date.getTime() - offset).toISOString().slice(0, 10)
+}
 export function AcademicDataProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
   const [semesters, setSemesters] = useState<Semester[]>([]),
@@ -119,7 +123,7 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
     setAssignments((x) => x.map((a) => (a.id === id ? row : a)))
   }
   async function persistReflection(mood: string, notes: string) {
-    if (!user) return
+    if (!user) throw new Error("You must be signed in to save a reflection")
     const row = await reflectionService.saveReflection({
       user_id: user.id,
       reflection_date: today(),
@@ -128,6 +132,7 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
       notes,
     })
     setReflection(row)
+    return row
   }
   return (
     <Context.Provider

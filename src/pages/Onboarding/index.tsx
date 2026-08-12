@@ -1,2 +1,92 @@
-import { useEffect, useState, type FormEvent } from "react"; import { useNavigate } from "react-router-dom"; import { Button } from "../../components/ui/Button"; import { useAuth } from "../../context/AuthContext"; import { supabase } from "../../lib/supabase";
-export function OnboardingPage(){const {user}=useAuth();const navigate=useNavigate();const [fullName,setFullName]=useState(""),[university,setUniversity]=useState(""),[major,setMajor]=useState(""),[year,setYear]=useState(""),[error,setError]=useState("");useEffect(()=>{if(!user)return;supabase.from("profiles").select("full_name,university,major,graduation_year,onboarding_completed").eq("id",user.id).single().then(({data})=>{if(!data)return;if(data.onboarding_completed)navigate("/dashboard",{replace:true});setFullName(data.full_name);setUniversity(data.university);setMajor(data.major);setYear(data.graduation_year?.toString()??"")})},[user,navigate]);async function submit(e:FormEvent){e.preventDefault();if(!user)return;const {error:saveError}=await supabase.from("profiles").upsert({id:user.id,email:user.email,full_name:fullName,university,major,graduation_year:Number(year),onboarding_completed:true,updated_at:new Date().toISOString()});if(saveError)setError(saveError.message);else navigate("/dashboard",{replace:true})}return <main className="auth-page"><div className="auth-card"><p className="eyebrow">A little about you</p><h1>Make Pathly yours.</h1><form onSubmit={submit}><label>Full name<input value={fullName} onChange={e=>setFullName(e.target.value)} required/></label><label>University<input value={university} onChange={e=>setUniversity(e.target.value)} required/></label><label>Major<input value={major} onChange={e=>setMajor(e.target.value)} required/></label><label>Graduation year<input type="number" min="1900" max="2200" value={year} onChange={e=>setYear(e.target.value)} required/></label>{error&&<p className="form-message">{error}</p>}<Button type="submit">Save and continue</Button></form></div></main>}
+import { useEffect, useState, type FormEvent } from "react"
+import { useNavigate } from "react-router-dom"
+import { Button } from "../../components/ui/Button"
+import { UniversityField } from "../../components/profile/UniversityField"
+import { useAuth } from "../../context/AuthContext"
+import { supabase } from "../../lib/supabase"
+
+export function OnboardingPage() {
+  const { user } = useAuth()
+  const navigate = useNavigate()
+  const [fullName, setFullName] = useState(""),
+    [university, setUniversity] = useState(""),
+    [major, setMajor] = useState(""),
+    [year, setYear] = useState(""),
+    [error, setError] = useState("")
+  useEffect(() => {
+    if (!user) return
+    supabase
+      .from("profiles")
+      .select("full_name,university,major,graduation_year,onboarding_completed")
+      .eq("id", user.id)
+      .single()
+      .then(({ data }) => {
+        if (!data) return
+        if (data.onboarding_completed) navigate("/dashboard", { replace: true })
+        setFullName(data.full_name)
+        setUniversity(data.university)
+        setMajor(data.major)
+        setYear(data.graduation_year?.toString() ?? "")
+      })
+  }, [user, navigate])
+  async function submit(e: FormEvent) {
+    e.preventDefault()
+    if (!user) return
+    const { error: saveError } = await supabase.from("profiles").upsert({
+      id: user.id,
+      email: user.email,
+      full_name: fullName,
+      university,
+      major,
+      graduation_year: Number(year),
+      onboarding_completed: true,
+      updated_at: new Date().toISOString(),
+    })
+    if (saveError) setError(saveError.message)
+    else navigate("/dashboard", { replace: true })
+  }
+  return (
+    <main className="auth-page">
+      <div className="auth-card">
+        <p className="eyebrow">A little about you</p>
+        <h1>Make Pathly yours.</h1>
+        <form onSubmit={submit}>
+          <label>
+            Full name
+            <input
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              required
+            />
+          </label>
+          <UniversityField
+            value={university}
+            onChange={setUniversity}
+            required
+          />
+          <label>
+            Major
+            <input
+              value={major}
+              onChange={(e) => setMajor(e.target.value)}
+              required
+            />
+          </label>
+          <label>
+            Graduation year
+            <input
+              type="number"
+              min="1900"
+              max="2200"
+              value={year}
+              onChange={(e) => setYear(e.target.value)}
+              required
+            />
+          </label>
+          {error && <p className="form-message">{error}</p>}
+          <Button type="submit">Save and continue</Button>
+        </form>
+      </div>
+    </main>
+  )
+}

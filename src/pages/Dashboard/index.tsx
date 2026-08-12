@@ -28,11 +28,12 @@ export function DashboardPage() {
   const navigate = useNavigate()
   const active = assignments.filter((a) => a.status !== "completed")
   const focus = active
-    .filter((a) =>
-      sameDay(a.due_at) ||
-      needsConfirmation(a.due_at) ||
-      a.status === "overdue" ||
-      a.status === "awaiting_confirmation"
+    .filter(
+      (a) =>
+        sameDay(a.due_at) ||
+        needsConfirmation(a.due_at) ||
+        a.status === "overdue" ||
+        a.status === "awaiting_confirmation",
     )
     .slice(0, 3)
   const nextExam = exams.find(
@@ -80,7 +81,7 @@ export function DashboardPage() {
                       id: a.id,
                       title: `${courseName(a.course_id)} — ${a.title}`,
                       detail:
-                      a.status === "overdue" || needsConfirmation(a.due_at)
+                        a.status === "overdue" || needsConfirmation(a.due_at)
                           ? "Overdue — confirm when complete"
                           : (a.description ?? "Due today"),
                       duration: a.estimated_minutes
@@ -203,15 +204,31 @@ function ReflectionCard({
 }: {
   initialMood: string
   initialNotes: string
-  onSave: (m: string, n: string) => Promise<void>
+  onSave: (m: string, n: string) => Promise<unknown>
 }) {
   const [mood, setMood] = useState(initialMood),
     [notes, setNotes] = useState(initialNotes),
-    [saved, setSaved] = useState(false)
+    [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">(
+      "idle",
+    ),
+    [saveError, setSaveError] = useState("")
   useEffect(() => {
     setMood(initialMood)
     setNotes(initialNotes)
   }, [initialMood, initialNotes])
+  async function save() {
+    setStatus("saving")
+    setSaveError("")
+    try {
+      await onSave(mood, notes)
+      setStatus("saved")
+    } catch (reason) {
+      setStatus("error")
+      setSaveError(
+        reason instanceof Error ? reason.message : "Unable to save reflection",
+      )
+    }
+  }
   const moods = ["strained", "low", "steady", "good", "rested"]
   return (
     <Card className="reflection">
@@ -222,7 +239,10 @@ function ReflectionCard({
           <button
             key={m}
             className={mood === m ? "selected" : ""}
-            onClick={() => setMood(m)}
+            onClick={() => {
+              setMood(m)
+              setStatus("idle")
+            }}
             aria-label={`Mood ${m}`}
           >
             {m.slice(0, 1).toUpperCase()}
@@ -231,15 +251,30 @@ function ReflectionCard({
       </div>
       <textarea
         value={notes}
-        onChange={(e) => setNotes(e.target.value)}
+        onChange={(e) => {
+          setNotes(e.target.value)
+          setStatus("idle")
+        }}
         aria-label="Reflection note"
         placeholder="A small win, or a note for tomorrow?"
       />
-      <Button
-        onClick={() => void onSave(mood, notes).then(() => setSaved(true))}
-      >
-        {saved ? "Saved" : "Save reflection"}
+      <Button onClick={() => void save()} disabled={status === "saving"}>
+        {status === "saving"
+          ? "Saving…"
+          : status === "saved"
+            ? "Saved for today"
+            : "Save reflection"}
       </Button>
+      {status === "saved" && (
+        <p className="save-success" role="status">
+          Your reflection is saved.
+        </p>
+      )}
+      {status === "error" && (
+        <p className="form-message" role="alert">
+          {saveError}
+        </p>
+      )}
     </Card>
   )
 }

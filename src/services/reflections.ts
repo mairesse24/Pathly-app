@@ -12,7 +12,9 @@ export async function getReflection(date: string) {
 export async function saveReflection(value: Omit<ReflectionRecord, "id">) {
   const { data, error } = await supabase
     .from("daily_reflections")
-    .upsert(value, { onConflict: "user_id,reflection_date" })
+    .upsert({ ...value, updated_at: new Date().toISOString() }, {
+      onConflict: "user_id,reflection_date",
+    })
     .select()
     .single()
   if (error) throw error

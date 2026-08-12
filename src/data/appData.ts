@@ -32,4 +32,4 @@ export const upcomingSchedule = [
   { time:"3:30", tone:"sage", title:"Campus library shift", location:"Willis Library · 3 hours" },
   { time:"7:00", tone:"gold", title:"CSCE 1030 study block", location:"Programming Assignment 4" },
 ];
-export const initialMessages: ChatMessage[] = [{ id:"welcome", author:"Pathly", text:"You’ve got a full day, Mairesse. Want to make a small plan for tonight?" }];
+export const initialMessages: ChatMessage[] = [{ id:"welcome", author:"Pathly", text:"Companion guidance is not connected to your academic data yet." }];

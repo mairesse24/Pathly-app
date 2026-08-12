@@ -1,7 +1,8 @@
 import { NavLink, Outlet } from "react-router-dom"
+import { useEffect, useState } from "react"
 import { Brand } from "../components/layout/Brand"
 import { Icon, type IconName } from "../components/ui/Icon"
-import { demoStudent } from "../data/appData"
+import { getProfileMetadata, type ProfileMetadata } from "../services/profiles"
 const links: { to: string; label: string; icon: IconName }[] = [
   { to: "/dashboard", label: "Today", icon: "home" },
   { to: "/study", label: "Study hub", icon: "book" },
@@ -11,6 +12,17 @@ const links: { to: string; label: string; icon: IconName }[] = [
   { to: "/uploads", label: "Uploads", icon: "upload" },
 ]
 export function AppShell() {
+  const [profile, setProfile] = useState<ProfileMetadata | null>(null)
+  useEffect(() => {
+    void getProfileMetadata().then(setProfile)
+  }, [])
+  const initials =
+    profile?.full_name
+      .split(/\s+/)
+      .map((part) => part[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() || "P"
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -36,13 +48,10 @@ export function AppShell() {
             <span>Settings</span>
           </NavLink>
           <NavLink to="/profile" className="user-card">
-            <div className="avatar">MN</div>
+            <div className="avatar">{initials}</div>
             <div>
-              <strong>{demoStudent.name}</strong>
-              <small>
-                {demoStudent.major}, Class of ’
-                {String(demoStudent.graduationYear).slice(-2)}
-              </small>
+              <strong>{profile?.full_name || "Your profile"}</strong>
+              <small>{profile?.major || "Academic details"}</small>
             </div>
           </NavLink>
         </div>
