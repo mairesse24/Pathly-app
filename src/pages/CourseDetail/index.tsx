@@ -1,14 +1,25 @@
+import { useEffect, useState } from "react"
 import { Navigate, useNavigate, useParams } from "react-router-dom"
 import { PageHeader } from "../../components/layout/PageHeader"
 import { Button } from "../../components/ui/Button"
 import { Card } from "../../components/ui/Card"
 import { useAcademicData } from "../../context/AcademicDataContext"
+import { downloadUpload, formatBytes, listUploads } from "../../services/uploads"
+import type { UploadedFileRecord } from "../../types/uploads"
 
 export function CourseDetailPage() {
   const { courseId } = useParams()
   const navigate = useNavigate()
   const { courses, assignments, exams, studySessions, loading } =
     useAcademicData()
+  const [files, setFiles] = useState<UploadedFileRecord[]>([])
+  const [fileError, setFileError] = useState("")
+  useEffect(() => {
+    if (!courseId) return
+    listUploads(courseId).then(setFiles).catch((reason: unknown) =>
+      setFileError(reason instanceof Error ? reason.message : "Unable to load course files."),
+    )
+  }, [courseId])
   if (loading)
     return (
       <>
@@ -96,6 +107,11 @@ export function CourseDetailPage() {
                 `${item.title} · ${new Date(item.start_at).toLocaleString()}`,
             )}
           />
+          <Card>
+            <p className="eyebrow">Course files</p>
+            {fileError ? <p className="form-message">{fileError}</p> : files.length ? <ul className="plain-list file-links">{files.map((file) => <li key={file.id}><button className="text-button" onClick={() => void downloadUpload(file)}>{file.original_filename}</button><small>{formatBytes(file.size_bytes)} · Uploaded — AI processing not yet enabled</small></li>)}</ul> : <p>No files associated with this course.</p>}
+            <Button variant="secondary" onClick={() => navigate("/uploads?category=syllabus")}>Upload course material</Button>
+          </Card>
         </div>
       </main>
     </>
