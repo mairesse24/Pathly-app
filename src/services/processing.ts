@@ -1,5 +1,5 @@
 import { supabase } from "../lib/supabase"
-import type { ProcessingResultRecord, SyllabusResult } from "../types/uploads"
+import type { ProcessingResultRecord, ProcessingStage, SyllabusResult } from "../types/uploads"
 
 export async function listProcessingResults() {
   const { data, error } = await supabase.from("ai_processing_results").select("*").order("created_at", { ascending: false })
@@ -7,11 +7,24 @@ export async function listProcessingResults() {
   return data as ProcessingResultRecord[]
 }
 
-export async function processUpload(uploadId: string) {
-  const { data, error } = await supabase.functions.invoke("process-academic-file", { body: { upload_id: uploadId } })
-  if (error) throw error
-  if (data?.error) throw new Error(data.error)
-  return data.processing as ProcessingResultRecord
+export async function processUpload(uploadId: string, onStage?: (stage: ProcessingStage) => void) {
+  let polling = false
+  const poll = async () => {
+    if (polling) return
+    polling = true
+    const { data } = await supabase.from("uploaded_files").select("processing_stage").eq("id", uploadId).single()
+    if (data?.processing_stage) onStage?.(data.processing_stage as ProcessingStage)
+    polling = false
+  }
+  onStage?.("preparing")
+  const timer = window.setInterval(() => void poll(), 800)
+  try {
+    const { data, error } = await supabase.functions.invoke("process-academic-file", { body: { upload_id: uploadId } })
+    if (error || data?.error || !data?.processing) throw new Error("processing_failed")
+    return data.processing as ProcessingResultRecord
+  } finally {
+    window.clearInterval(timer)
+  }
 }
 
 export async function approveSyllabus(input: {

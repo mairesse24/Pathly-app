@@ -26,6 +26,8 @@
 .review-item label input { width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:8px; }
 .processing-review>.btn { margin-top:15px; }
 .upload-status { color:var(--deep)!important; }
+.processing-support { max-width:680px; margin-top:10px!important; color:var(--muted)!important; }
+.processing-failure { max-width:680px; margin-top:10px!important; color:#7c4242!important; }
 .file-links li { display:grid; gap:3px; }
 .file-links small { color:var(--muted); }
 @media (max-width:680px) { .storage-summary { grid-template-columns:1fr; }.uploaded-file-row { align-items:flex-start; flex-direction:column; }.upload-row-actions { justify-content:flex-start; }.processing-review { margin-left:0; }.review-item { grid-template-columns:auto 1fr; }.review-item label:last-child { grid-column:2; } }

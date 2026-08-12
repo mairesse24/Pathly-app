@@ -7,10 +7,12 @@ import type { LectureResult, ProcessingResultRecord, SyllabusResult } from "../.
 export function ProcessingReview({ record, onApproved }: { record: ProcessingResultRecord; onApproved: (row: ProcessingResultRecord) => void }) {
   if (record.kind === "lecture") {
     const result = record.result as LectureResult
-    return <Card className="processing-review"><p className="eyebrow">Lecture notes</p><h3>{result.title}</h3><p>{result.summary}</p>
-      <h4>Topics</h4><ul>{result.topics.map((topic) => <li key={topic}>{topic}</li>)}</ul>
-      <h4>Key terms</h4><dl>{result.key_terms.map((item) => <div key={item.term}><dt>{item.term}</dt><dd>{item.definition}</dd></div>)}</dl>
-      <h4>Study questions</h4><ol>{result.study_questions.map((question) => <li key={question}>{question}</li>)}</ol>
+    return <Card className="processing-review"><p className="eyebrow">Study materials</p><h3>{result.title}</h3>
+      <h4>Summary</h4><p>{result.summary}</p>
+      <h4>Key concepts</h4><ul>{result.key_concepts.map((concept) => <li key={concept}>{concept}</li>)}</ul>
+      <h4>Flashcards</h4><dl>{result.flashcards.map((item) => <div key={item.front}><dt>{item.front}</dt><dd>{item.back}</dd></div>)}</dl>
+      <h4>Practice questions</h4><ol>{result.practice_questions.map((question) => <li key={question}>{question}</li>)}</ol>
+      <h4>Topics worth reviewing</h4><ul>{result.topics_worth_reviewing.map((topic) => <li key={topic}>{topic}</li>)}</ul>
     </Card>
   }
   return <SyllabusReview record={record} onApproved={onApproved}/>
@@ -40,7 +42,7 @@ function SyllabusReview({ record, onApproved }: { record: ProcessingResultRecord
   }
   if (record.status === "approved") return <Card className="processing-review"><p className="save-success">Reviewed syllabus items were saved.</p></Card>
   return <Card className="processing-review"><p className="eyebrow">Syllabus review required</p><h3>Review before anything is added</h3>
-    <p>{result.course_summary}</p><p className="review-note">Claude can make mistakes. Select only accurate items and edit titles or dates before saving.</p>
+    <p>{result.course_summary}</p><p className="review-note">Automated extraction can make mistakes. Select only accurate items and edit titles or dates before saving.</p>
     <h4>Assignments</h4>{result.assignments.length ? result.assignments.map((item, index) => <div className="review-item" key={`assignment-${index}`}>
       <input aria-label={`Include assignment ${item.title}`} type="checkbox" checked={selectedAssignments.has(index)} onChange={() => toggle(index, assignmentIndexes, setAssignmentIndexes)}/>
       <label>Title<input value={item.title} onChange={(event) => setResult((current) => ({ ...current, assignments: current.assignments.map((value, i) => i === index ? { ...value, title: event.target.value } : value) }))}/></label>

@@ -14,6 +14,9 @@ export type UploadedFileRecord = {
   mime_type: string
   size_bytes: number
   processing_status: "pending_upload" | "uploaded" | "upload_failed" | "processing" | "ready_for_review" | "processed" | "processing_failed"
+  processing_stage: ProcessingStage | null
+  processing_error_code: string | null
+  error_message: string | null
   is_sensitive: boolean
   created_at: string
   updated_at: string
@@ -27,10 +30,12 @@ export type SyllabusResult = {
 export type LectureResult = {
   title: string
   summary: string
-  topics: string[]
-  key_terms: Array<{ term: string; definition: string }>
-  study_questions: string[]
+  key_concepts: string[]
+  flashcards: Array<{ front: string; back: string }>
+  practice_questions: string[]
+  topics_worth_reviewing: string[]
 }
+export type ProcessingStage = "preparing" | "reading" | "creating" | "saving"
 export type ProcessingResultRecord = {
   id: string
   user_id: string
