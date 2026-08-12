@@ -1,4 +1,4 @@
-import type { CalendarItem, ChatMessage, CourseSummary, DegreeRequirement, FocusTask, StudyMaterial } from "../types/app";
+import type { CalendarItem, ChatMessage, CourseSummary, FocusTask, StudyMaterial } from "../types/app";
 
 export const demoStudent = { name: "Mairesse N.", firstName: "Mairesse", university: "University of North Texas", major: "Computer Science", graduationYear: 2027 };
 export const focusTasks: FocusTask[] = [
@@ -25,12 +25,6 @@ export const calendarItems: CalendarItem[] = [
   { day:1, title:"Campus library shift", time:"3:30–6:30", tone:"gold", offset:true },
   { day:2, title:"MATH 1710", time:"1:00–2:15", tone:"clay" },
   { day:4, title:"CSCE 3201 concept check", time:"10:00–11:00", tone:"rose" },
-];
-export const degreeRequirements: DegreeRequirement[] = [
-  { title:"Computer Science core", progressLabel:"21 of 39 credits", percent:54 },
-  { title:"Mathematics foundation", progressLabel:"9 of 15 credits", percent:60 },
-  { title:"General education", progressLabel:"26 of 42 credits", percent:62 },
-  { title:"Supporting coursework", progressLabel:"11 of 24 credits", percent:46 },
 ];
 export const dashboardExam = { title:"CSCE 1040 — Data structures review", date:"Friday, Oct 17 · 10:00 AM", countdown:"3 days away" };
 export const upcomingSchedule = [
