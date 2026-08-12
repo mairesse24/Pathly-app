@@ -7,13 +7,13 @@ import { Button } from "../../components/ui/Button"
 import { Card } from "../../components/ui/Card"
 import { Icon } from "../../components/ui/Icon"
 import { useAcademicData } from "../../context/AcademicDataContext"
-import { useAuth } from "../../context/AuthContext"
+import { useProfile } from "../../context/ProfileContext"
 const sameDay = (value: string | null) =>
   value ? new Date(value).toDateString() === new Date().toDateString() : false
 const needsConfirmation = (dueAt: string | null) =>
   Boolean(dueAt && new Date(dueAt) < new Date() && !sameDay(dueAt))
 export function DashboardPage() {
-  const { user } = useAuth()
+  const { profile } = useProfile()
   const {
     assignments,
     courses,
@@ -48,7 +48,7 @@ export function DashboardPage() {
   return (
     <>
       <PageHeader
-        title={`Good morning, ${user?.user_metadata.full_name?.split(" ")[0] ?? "student"}.`}
+        title={`Good morning, ${profile?.display_name.split(/\s+/)[0] || "student"}.`}
       />
       <main className="page dashboard">
         <div className="welcome">

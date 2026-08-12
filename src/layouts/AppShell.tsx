@@ -1,8 +1,7 @@
 import { NavLink, Outlet } from "react-router-dom"
-import { useEffect, useState } from "react"
 import { Brand } from "../components/layout/Brand"
 import { Icon, type IconName } from "../components/ui/Icon"
-import { getProfileMetadata, type ProfileMetadata } from "../services/profiles"
+import { useProfile } from "../context/ProfileContext"
 const links: { to: string; label: string; icon: IconName }[] = [
   { to: "/dashboard", label: "Today", icon: "home" },
   { to: "/study", label: "Study hub", icon: "book" },
@@ -12,12 +11,9 @@ const links: { to: string; label: string; icon: IconName }[] = [
   { to: "/uploads", label: "Uploads", icon: "upload" },
 ]
 export function AppShell() {
-  const [profile, setProfile] = useState<ProfileMetadata | null>(null)
-  useEffect(() => {
-    void getProfileMetadata().then(setProfile)
-  }, [])
+  const { profile } = useProfile()
   const initials =
-    profile?.full_name
+    profile?.display_name
       .split(/\s+/)
       .map((part) => part[0])
       .join("")
@@ -50,7 +46,7 @@ export function AppShell() {
           <NavLink to="/profile" className="user-card">
             <div className="avatar">{initials}</div>
             <div>
-              <strong>{profile?.full_name || "Your profile"}</strong>
+              <strong>{profile?.display_name || "Your profile"}</strong>
               <small>{profile?.major || "Academic details"}</small>
             </div>
           </NavLink>

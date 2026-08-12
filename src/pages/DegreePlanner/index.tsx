@@ -1,16 +1,12 @@
-import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { PageHeader } from "../../components/layout/PageHeader"
 import { Button } from "../../components/ui/Button"
 import { Card } from "../../components/ui/Card"
-import { getProfileMetadata, type ProfileMetadata } from "../../services/profiles"
+import { useProfile } from "../../context/ProfileContext"
 
 export function DegreePlannerPage() {
   const navigate = useNavigate()
-  const [profile, setProfile] = useState<ProfileMetadata | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState("")
-  useEffect(() => { getProfileMetadata().then(setProfile).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Unable to load your profile")).finally(() => setLoading(false)) }, [])
+  const { profile, loading, error } = useProfile()
   return <><PageHeader title="Degree plan"/><main className="page">
     <div className="intro-row"><div><h2>Build an accurate degree plan.</h2><p>Pathly only calculates progress from coursework you have reviewed and confirmed.</p></div></div>
     <Card className="degree-metadata"><p className="eyebrow">Program information</p>{loading ? <p>Loading your program…</p> : error ? <p className="form-message">{error}</p> : <><h3>{profile?.major || "Major not added"}</h3><p>{profile?.university || "University not added"}</p>{(profile?.graduation_year || profile?.expected_graduation_term) && <p>Expected graduation: {[profile.expected_graduation_term, profile.graduation_year].filter(Boolean).join(" ")} (provided by you; not a Pathly prediction)</p>}</>}</Card>

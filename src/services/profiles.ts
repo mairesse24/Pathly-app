@@ -1,7 +1,7 @@
 import { supabase } from "../lib/supabase"
 
 export type ProfileMetadata = {
-  full_name: string
+  display_name: string
   university: string
   major: string
   graduation_year: number | null
@@ -11,16 +11,21 @@ export type ProfileMetadata = {
 export type GraduationTerm = "Spring" | "Summer" | "Fall" | "Winter"
 export type AcademicDetailsInput = Pick<ProfileMetadata,"university"|"major"|"graduation_year"|"catalog_year"|"expected_graduation_term">
 
-export async function getProfileMetadata() {
+const profileColumns = "display_name,university,major,graduation_year,catalog_year,expected_graduation_term"
+
+export async function getProfileMetadata(userId: string) {
   const { data, error } = await supabase
     .from("profiles")
-    .select("full_name,university,major,graduation_year,catalog_year,expected_graduation_term")
+    .select(profileColumns)
+    .eq("id", userId)
     .single()
   if (error) throw error
   return data as ProfileMetadata
 }
-export async function updateAcademicDetails(value: AcademicDetailsInput) {
-  const { data, error } = await supabase.from("profiles").update({ ...value, updated_at:new Date().toISOString() }).select("full_name,university,major,graduation_year,catalog_year,expected_graduation_term").single()
+export async function updateProfile(userId: string, value: Partial<ProfileMetadata>) {
+  const updates = { ...value, updated_at: new Date().toISOString() } as Record<string, unknown>
+  if (typeof value.display_name === "string") updates.full_name = value.display_name
+  const { data, error } = await supabase.from("profiles").update(updates).eq("id", userId).select(profileColumns).single()
   if (error) throw error
   return data as ProfileMetadata
 }
