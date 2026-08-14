@@ -1,5 +1,6 @@
 import { supabase } from "../lib/supabase"
 import type { UploadCategory, UploadedFileRecord } from "../types/uploads"
+import { createId } from "../utils/createId"
 
 export const SOURCE_BUCKET = "source-uploads"
 export const MAX_FILE_BYTES = 25 * 1024 * 1024
@@ -12,28 +13,6 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   png: "image/png",
   jpg: "image/jpeg",
   jpeg: "image/jpeg",
-}
-
-export function createUploadId() {
-  const browserCrypto = globalThis.crypto
-  if (typeof browserCrypto?.randomUUID === "function") {
-    return browserCrypto.randomUUID()
-  }
-  if (typeof browserCrypto?.getRandomValues !== "function") {
-    throw new Error("Secure file identifiers are not supported in this browser.")
-  }
-
-  const bytes = browserCrypto.getRandomValues(new Uint8Array(16))
-  bytes[6] = (bytes[6] & 0x0f) | 0x40
-  bytes[8] = (bytes[8] & 0x3f) | 0x80
-  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0"))
-  return [
-    hex.slice(0, 4).join(""),
-    hex.slice(4, 6).join(""),
-    hex.slice(6, 8).join(""),
-    hex.slice(8, 10).join(""),
-    hex.slice(10, 16).join(""),
-  ].join("-")
 }
 
 export function validateUpload(file: File) {
@@ -67,7 +46,7 @@ export async function uploadSourceFile(input: {
     ? input.category
     : "academic-progress"
   const extension = input.file.name.split(".").pop()!.toLowerCase()
-  const path = `${input.userId}/${folder}/${createUploadId()}.${extension}`
+  const path = `${input.userId}/${folder}/${createId()}.${extension}`
   const reservation = {
     user_id: input.userId,
     course_id: input.courseId,
