@@ -29,13 +29,11 @@ export async function getLatestCompanionConversation() {
 export async function sendCompanionMessage(input: {
   conversationId: string | null
   message: string
-  requestId: string
 }) {
   const { data, error } = await supabase.functions.invoke("pathly-companion", {
     body: {
       conversation_id: input.conversationId,
       message: input.message,
-      request_id: input.requestId,
       timezone: browserTimeZone(),
     },
   })
@@ -43,6 +41,7 @@ export async function sendCompanionMessage(input: {
     throw new Error("companion_failed")
   return {
     conversation: data.conversation as CompanionConversation,
+    userMessage: data.user_message as CompanionMessage,
     message: data.message as CompanionMessage,
   }
 }

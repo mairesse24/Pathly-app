@@ -4,7 +4,6 @@ import {
   sendCompanionMessage,
 } from "../../services/companion"
 import type { CompanionMessage } from "../../types/companion"
-import { createId } from "../../utils/createId"
 import { Icon } from "../ui/Icon"
 
 const prompts = [
@@ -24,6 +23,7 @@ export function ChatPanel() {
   const [error, setError] = useState("")
   const logRef = useRef<HTMLDivElement>(null)
   const submittingRef = useRef(false)
+  const optimisticSequence = useRef(0)
 
   useEffect(() => {
     getLatestCompanionConversation()
@@ -47,12 +47,12 @@ export function ChatPanel() {
     const text = message.trim()
     if (!text || submittingRef.current) return
     submittingRef.current = true
-    const requestId = createId()
+    const localId = `pending-${++optimisticSequence.current}`
     const optimistic: CompanionMessage = {
-      id: requestId,
+      id: localId,
       conversation_id: conversationId || "pending",
       user_id: "current",
-      request_id: requestId,
+      request_id: "pending",
       role: "user",
       content: text,
       sources: [],
@@ -67,16 +67,15 @@ export function ChatPanel() {
       const result = await sendCompanionMessage({
         conversationId,
         message: text,
-        requestId,
       })
       setConversationId(result.conversation.id)
       setMessages((current) => [
-        ...current.filter((item) => item.id !== requestId),
-        { ...optimistic, conversation_id: result.conversation.id },
+        ...current.filter((item) => item.id !== localId),
+        result.userMessage,
         result.message,
       ])
     } catch {
-      setMessages((current) => current.filter((item) => item.id !== requestId))
+      setMessages((current) => current.filter((item) => item.id !== localId))
       setMessage(text)
       setError("Pathly couldn't answer that right now. Try again.")
     } finally {

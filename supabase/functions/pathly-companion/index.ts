@@ -49,6 +49,12 @@ function localDateKey(date: Date, timeZone: string) {
   const part = (type: string) => parts.find((item) => item.type === type)?.value
   return `${part("year")}-${part("month")}-${part("day")}`
 }
+async function duplicateClaim(userId: string, message: string) {
+  const bucket = Math.floor(Date.now() / 30_000)
+  const bytes = new TextEncoder().encode(`${userId}\n${bucket}\n${message}`)
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))
+  return Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("")
+}
 
 const responseSchema = {
   type: "object",
@@ -97,16 +103,10 @@ Deno.serve(async (req: Request) => {
   try {
     const body = await req.json()
     const message = typeof body.message === "string" ? body.message.trim() : ""
-    const requestId = typeof body.request_id === "string" ? body.request_id : ""
     const requestedTimeZone = validTimeZone(body.timezone)
     let conversationId =
       typeof body.conversation_id === "string" ? body.conversation_id : ""
-    if (
-      !message ||
-      message.length > 2000 ||
-      !/^[0-9a-f-]{36}$/i.test(requestId)
-    )
-      return respond({ error: "invalid_request" }, 400)
+    if (!message || message.length > 2000) return respond({ error: "invalid_request" }, 400)
 
     if (conversationId) {
       const { data: owned } = await admin
@@ -116,23 +116,17 @@ Deno.serve(async (req: Request) => {
         .eq("user_id", user.id)
         .maybeSingle()
       if (!owned) return respond({ error: "conversation_not_found" }, 404)
-      const { data: existing } = await admin
-        .from("companion_messages")
-        .select("*")
-        .eq("conversation_id", conversationId)
-        .eq("user_id", user.id)
-        .eq("request_id", requestId)
-        .eq("role", "assistant")
-        .maybeSingle()
-      if (existing) {
-        const { data: conversation } = await admin
-          .from("companion_conversations")
-          .select("*")
-          .eq("id", conversationId)
-          .single()
-        return respond({ conversation, message: existing })
-      }
-    } else {
+    }
+    const dedupeKey = await duplicateClaim(user.id, message)
+    const { data: claimed } = await admin.from("companion_messages").select("*").eq("user_id", user.id).eq("dedupe_key", dedupeKey).eq("role", "user").maybeSingle()
+    if (claimed) {
+      const { data: existing } = await admin.from("companion_messages").select("*").eq("conversation_id", claimed.conversation_id).eq("request_id", claimed.request_id).eq("role", "assistant").maybeSingle()
+      const { data: conversation } = await admin.from("companion_conversations").select("*").eq("id", claimed.conversation_id).eq("user_id", user.id).single()
+      if (existing) return respond({ conversation, user_message: claimed, message: existing })
+      return respond({ error: "request_in_progress", message: "Pathly is already working on that request." }, 409)
+    }
+    const createdConversation = !conversationId
+    if (!conversationId) {
       const title = message.length > 60 ? `${message.slice(0, 57)}...` : message
       const { data: created, error } = await admin
         .from("companion_conversations")
@@ -142,21 +136,16 @@ Deno.serve(async (req: Request) => {
       if (error) throw error
       conversationId = created.id
     }
-    await admin
-      .from("companion_messages")
-      .upsert(
-        {
-          conversation_id: conversationId,
-          user_id: user.id,
-          request_id: requestId,
-          role: "user",
-          content: message,
-        },
-        {
-          onConflict: "conversation_id,request_id,role",
-          ignoreDuplicates: true,
-        },
-      )
+    const { data: userMessage, error: claimError } = await admin.from("companion_messages").insert({ conversation_id: conversationId, user_id: user.id, role: "user", content: message, dedupe_key: dedupeKey }).select("*").single()
+    if (claimError) {
+      const { data: competing } = await admin.from("companion_messages").select("*").eq("user_id", user.id).eq("dedupe_key", dedupeKey).eq("role", "user").maybeSingle()
+      if (competing) {
+        if (createdConversation) await admin.from("companion_conversations").delete().eq("id", conversationId).eq("user_id", user.id)
+        return respond({ error: "request_in_progress", message: "Pathly is already working on that request." }, 409)
+      }
+      throw claimError
+    }
+    const requestId = userMessage.request_id
 
     const lower = message.toLowerCase()
     const wantsPlanning =
@@ -391,7 +380,7 @@ Deno.serve(async (req: Request) => {
       .eq("user_id", user.id)
       .select("*")
       .single()
-    return respond({ conversation, message: assistant })
+    return respond({ conversation, user_message: userMessage, message: assistant })
   } catch (error) {
     console.error("Pathly Companion request failed", error)
     return respond(failure, 500)
