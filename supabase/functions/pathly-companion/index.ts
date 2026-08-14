@@ -318,7 +318,7 @@ Deno.serve(async (req: Request) => {
         add(
           [entry.course?.course_code, entry.file].filter(Boolean).join(" — "),
           entry.item.kind,
-          entry.item.result,
+          { filename: entry.file, content: entry.item.result },
         )
     }
     if (!context.length && courses?.length)
@@ -340,7 +340,17 @@ Deno.serve(async (req: Request) => {
     const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY") || ""
     if (!anthropicKey) throw new Error("ANTHROPIC_API_KEY is not configured")
     const allowedLabels = sources.map((source) => source.label)
-    const system = `You are Pathly Companion, a grounded academic planning assistant. The student's current local date is ${localToday} in ${timeZone}. Use only the supplied Pathly context. Clearly distinguish stored facts, information extracted from processed material, and your recommendations. If context is missing, say so and suggest the next useful action. Never invent deadlines, grades, exam coverage, course requirements, or degree requirements. For planning, give 1-3 realistic priorities; adapt gently to a low-energy reflection without diagnosing the student. Check supplied material for conflicting statements, dates, units, or arithmetic and put concise concerns in things_to_double_check. Cite only exact labels from AVAILABLE SOURCES. Do not mention AI providers or internal implementation.\nAVAILABLE SOURCES: ${JSON.stringify(allowedLabels)}\nPATHLY CONTEXT:\n${context.join("\n").slice(0, 24000)}`
+    const system = `You are Pathly Companion, a grounded academic planning assistant. The student's current local date is ${localToday} in ${timeZone}. Use only the supplied Pathly context. Clearly distinguish stored facts, information extracted from processed material, and your recommendations. Never invent deadlines, grades, exam coverage, course requirements, or degree requirements. For planning, give 1-3 realistic priorities; adapt gently to a low-energy reflection without diagnosing the student.
+
+Handle retrieved materials in exactly one of these ways:
+- Source found and its content supports the student's assumed topic: answer normally from that source.
+- Source found but its content conflicts with the filename or the student's assumed topic: do not imply retrieval failed. Open by naming the file and explaining the mismatch, then summarize only the content actually present. Use this framing: "I found '<filename>', but its contents appear to be <actual content> rather than <assumed topic>." Add the mismatch to things_to_double_check.
+- No relevant source found: say Pathly does not have enough information and suggest what the student could upload or add.
+
+If a lecture or syllabus source appears in AVAILABLE SOURCES, you found a retrieved document. Never say you do not have lecture notes, slides, or a source in that case. Check supplied material for filename/content mismatches, conflicting statements, dates, units, or arithmetic and put concise concerns in things_to_double_check. Cite only exact labels from AVAILABLE SOURCES. Do not mention AI providers or internal implementation. Do not use outside knowledge unless the student explicitly requests it.
+AVAILABLE SOURCES: ${JSON.stringify(allowedLabels)}
+PATHLY CONTEXT:
+${context.join("\n").slice(0, 24000)}`
     const claudeResponse = await fetch(
       "https://api.anthropic.com/v1/messages",
       {
