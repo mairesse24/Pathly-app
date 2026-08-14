@@ -270,19 +270,32 @@ Deno.serve(async (req: Request) => {
             : ["lecture", "syllabus"]
       const { data: results = [], error: resultsError } = await admin
         .from("ai_processing_results")
-        .select(
-          "kind,result,course_id,created_at,uploaded_files!ai_processing_results_upload_owner_fkey(original_filename)",
-        )
+        .select("upload_id,kind,status,result,course_id,created_at")
         .eq("user_id", user.id)
         .in("kind", kinds)
+        .in("status", ["ready_for_review", "approved"])
         .order("created_at", { ascending: false })
         .limit(8)
       if (resultsError) throw resultsError
+      const uploadIds = (results || []).map((item: any) => item.upload_id)
+      const { data: uploads = [], error: uploadsError } = uploadIds.length
+        ? await admin
+          .from("uploaded_files")
+          .select("id,original_filename,category,processing_status")
+          .eq("user_id", user.id)
+          .in("id", uploadIds)
+          .in("category", kinds)
+          .in("processing_status", ["ready_for_review", "approved"])
+        : { data: [], error: null }
+      if (uploadsError) throw uploadsError
+      const uploadById = new Map(
+        (uploads || []).map((upload: any) => [upload.id, upload]),
+      )
       const ranked = (results || [])
+        .filter((item: any) => uploadById.has(item.upload_id))
         .map((item: any, index: number) => {
           const course = courseById.get(item.course_id)
-          const file =
-            item.uploaded_files?.original_filename || "Processed material"
+          const file = uploadById.get(item.upload_id)?.original_filename || "Processed material"
           const resultText = compact(item.result, 12000)
           const continuesPriorMaterial = /\b(that|this|it|latest)\b/.test(lower) && recentSourceLabels.some((label: string) => label.toLowerCase().includes(file.toLowerCase()))
           const requestsLatestMaterial = /\b(latest|most recent)\b/.test(lower)
