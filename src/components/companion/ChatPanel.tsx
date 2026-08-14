@@ -4,6 +4,7 @@ import {
   sendCompanionMessage,
 } from "../../services/companion"
 import type { CompanionMessage } from "../../types/companion"
+import { createId } from "../../utils/createId"
 import { Icon } from "../ui/Icon"
 
 const prompts = [
@@ -22,6 +23,7 @@ export function ChatPanel() {
   const [sending, setSending] = useState(false)
   const [error, setError] = useState("")
   const logRef = useRef<HTMLDivElement>(null)
+  const submittingRef = useRef(false)
 
   useEffect(() => {
     getLatestCompanionConversation()
@@ -43,8 +45,9 @@ export function ChatPanel() {
 
   const send = async () => {
     const text = message.trim()
-    if (!text || sending) return
-    const requestId = crypto.randomUUID()
+    if (!text || submittingRef.current) return
+    submittingRef.current = true
+    const requestId = createId()
     const optimistic: CompanionMessage = {
       id: requestId,
       conversation_id: conversationId || "pending",
@@ -77,6 +80,7 @@ export function ChatPanel() {
       setMessage(text)
       setError("Pathly couldn't answer that right now. Try again.")
     } finally {
+      submittingRef.current = false
       setSending(false)
     }
   }
