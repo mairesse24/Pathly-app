@@ -31,12 +31,14 @@ import { AuthPage } from "./pages/Auth"
 import { OnboardingPage } from "./pages/Onboarding"
 import { CourseDetailPage } from "./pages/CourseDetail"
 import { AcademicDataProvider } from "./context/AcademicDataContext"
+import { ProfileProvider } from "./context/ProfileContext"
 
 export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppProvider>
+        <ProfileProvider>
+          <AppProvider>
           <AcademicDataProvider>
             <Routes>
               <Route path="/" element={<LandingPage />} />
@@ -61,7 +63,8 @@ export default function App() {
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </AcademicDataProvider>
-        </AppProvider>
+          </AppProvider>
+        </ProfileProvider>
       </AuthProvider>
     </BrowserRouter>
   )
