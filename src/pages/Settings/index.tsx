@@ -17,6 +17,7 @@ import {
 import { formatBytes, listUploads, USER_QUOTA_BYTES } from "../../services/uploads"
 import { formatInstant } from "../../utils/dateTime"
 import type { AcademicDetailsInput, ProfileMetadata } from "../../services/profiles"
+import { formatCatalogYear } from "../../utils/catalogYear"
 
 const emptyDetails: AcademicDetailsInput = {
   university: "",
@@ -153,7 +154,7 @@ export function SettingsPage() {
                 <Fact label="Your university" value={profile?.university || "Not provided"} />
                 <Fact label="Major" value={profile?.major || "Not provided"} />
                 <Fact label="Expected graduation" value={formatGraduation(profile)} />
-                <Fact label="Catalog year" value={profile?.catalog_year?.toString() || "Not provided"} />
+                <Fact label="Catalog year" value={formatCatalogYear(profile?.catalog_year)} />
               </div>
               {!hasDetails && (
                 <p>Complete your academic details to help Pathly personalize your experience.</p>

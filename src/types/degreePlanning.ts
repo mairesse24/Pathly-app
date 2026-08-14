@@ -20,9 +20,10 @@ export type DegreeProgramMatch = {
   supported_catalog_years: number[]
   message: string
 }
-export type RequirementOption = { id: string; group_id: string; course_code: string; course_title: string | null; credit_hours: number }
+export type RequirementOption = { id: string; group_id: string; course_code: string; course_title: string | null; credit_hours: number; prerequisite_text?: string | null; source_note?: string | null }
 export type RequirementGroup = {
   id: string; program_id: string; name: string; description: string | null
   requirement_type: "all_courses" | "minimum_credits" | "total_degree"
+  matching_strategy: "course_options" | "degree_total" | "degree_audit_review"
   minimum_credits: number; sort_order: number; requirement_course_options: RequirementOption[]
 }
