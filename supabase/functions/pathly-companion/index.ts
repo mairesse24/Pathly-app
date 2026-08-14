@@ -250,6 +250,17 @@ Deno.serve(async (req: Request) => {
       if (reflections?.length)
         add("Today's reflection", "reflection", reflections[0])
     }
+    const { data: history = [], error: historyError } = await admin
+      .from("companion_messages")
+      .select("role,content,sources")
+      .eq("conversation_id", conversationId)
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(9)
+    if (historyError) throw historyError
+    const recentSourceLabels = (history || []).flatMap((item: any) =>
+      Array.isArray(item.sources) ? item.sources.map((source: any) => source?.label).filter(Boolean) : [],
+    )
     if (wantsLecture || wantsSyllabus) {
       const kinds =
         wantsLecture && !wantsSyllabus
@@ -257,20 +268,24 @@ Deno.serve(async (req: Request) => {
           : wantsSyllabus && !wantsLecture
             ? ["syllabus"]
             : ["lecture", "syllabus"]
-      const { data: results = [] } = await admin
+      const { data: results = [], error: resultsError } = await admin
         .from("ai_processing_results")
         .select(
-          "kind,result,course_id,created_at,uploaded_files(original_filename)",
+          "kind,result,course_id,created_at,uploaded_files!ai_processing_results_upload_owner_fkey(original_filename)",
         )
         .eq("user_id", user.id)
         .in("kind", kinds)
         .order("created_at", { ascending: false })
         .limit(8)
+      if (resultsError) throw resultsError
       const ranked = (results || [])
         .map((item: any, index: number) => {
           const course = courseById.get(item.course_id)
           const file =
             item.uploaded_files?.original_filename || "Processed material"
+          const resultText = compact(item.result, 12000)
+          const continuesPriorMaterial = /\b(that|this|it|latest)\b/.test(lower) && recentSourceLabels.some((label: string) => label.toLowerCase().includes(file.toLowerCase()))
+          const requestsLatestMaterial = /\b(latest|most recent)\b/.test(lower)
           return {
             item,
             course,
@@ -278,16 +293,17 @@ Deno.serve(async (req: Request) => {
             score:
               relevance(
                 message,
-                `${file} ${course?.course_code || ""} ${course?.course_name || ""} ${item.result?.title || ""}`,
+                `${file} ${course?.course_code || ""} ${course?.course_name || ""} ${resultText}`,
               ) -
-              index * 0.01,
+              index * 0.01 + (continuesPriorMaterial ? 4 : 0) + (requestsLatestMaterial && index === 0 ? 2 : 0),
           }
         })
         .sort((a: any, b: any) => b.score - a.score)
+        .filter((entry: any) => entry.score > 0)
         .slice(0, 2)
       for (const entry of ranked)
         add(
-          `${entry.course?.course_code || "Course"} — ${entry.file}`,
+          [entry.course?.course_code, entry.file].filter(Boolean).join(" — "),
           entry.item.kind,
           entry.item.result,
         )
@@ -299,13 +315,6 @@ Deno.serve(async (req: Request) => {
         courses.map(({ id: _id, ...course }: any) => course),
       )
 
-    const { data: history = [] } = await admin
-      .from("companion_messages")
-      .select("role,content,sources")
-      .eq("conversation_id", conversationId)
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(9)
     const prior = (history || [])
       .reverse()
       .filter(
