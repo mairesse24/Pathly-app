@@ -13,6 +13,10 @@ export type ProfileMetadata = {
 
   expected_graduation_term: GraduationTerm | null
   timezone: string | null
+  preferred_study_time: "morning" | "afternoon" | "evening" | "late_night" | "no_preference" | null
+  focus_session_minutes: number | null
+  prefers_breaks: boolean | null
+  break_duration_minutes: number | null
 }
 
 export type GraduationTerm = "Spring" | "Summer" | "Fall" | "Winter"
@@ -20,7 +24,7 @@ export type GraduationTerm = "Spring" | "Summer" | "Fall" | "Winter"
 export type AcademicDetailsInput = Pick<ProfileMetadata, "university" | "major" | "graduation_year" | "catalog_year" | "expected_graduation_term">
 
 const profileColumns =
-  "display_name,university,major,graduation_year,catalog_year,expected_graduation_term,timezone"
+  "display_name,university,major,graduation_year,catalog_year,expected_graduation_term,timezone,preferred_study_time,focus_session_minutes,prefers_breaks,break_duration_minutes"
 
 export async function getProfileMetadata(userId: string) {
   const { data, error } = await supabase

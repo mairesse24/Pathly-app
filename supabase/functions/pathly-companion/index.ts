@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js@2.5.0/edge-runtime.d.ts"
 import { createClient } from "@supabase/supabase-js"
+import { buildSmartPlan } from "../_shared/smartPlanning.ts"
 
 const headers = {
   "Access-Control-Allow-Origin": "*",
@@ -173,14 +174,12 @@ Deno.serve(async (req: Request) => {
     const courseById = new Map(
       (courses || []).map((course: any) => [course.id, course]),
     )
-    const { data: profile } = await admin.from("profiles").select("timezone").eq("id", user.id).maybeSingle()
+    const { data: profile } = await admin.from("profiles").select("timezone,preferred_study_time,focus_session_minutes,prefers_breaks,break_duration_minutes").eq("id", user.id).maybeSingle()
     const timeZone = validTimeZone(profile?.timezone || requestedTimeZone)
     const localToday = localDateKey(new Date(), timeZone)
 
     if (wantsPlanning) {
       const now = new Date()
-      const windowStart = new Date(now.getTime() - 24 * 86400000)
-      const soon = new Date(now.getTime() + 14 * 86400000)
       const later = new Date(now.getTime() + 30 * 86400000)
       const [
         { data: assignments = [] },
@@ -190,16 +189,14 @@ Deno.serve(async (req: Request) => {
       ] = await Promise.all([
         admin
           .from("assignments")
-          .select("course_id,title,due_at,estimated_minutes,status")
+          .select("id,course_id,title,due_at,estimated_minutes,status")
           .eq("user_id", user.id)
           .neq("status", "completed")
-          .gte("due_at", windowStart.toISOString())
-          .lte("due_at", soon.toISOString())
           .order("due_at")
-          .limit(8),
+          .limit(50),
         admin
           .from("exams")
-          .select("course_id,title,exam_at,topics_summary")
+          .select("id,course_id,title,exam_at,topics_summary")
           .eq("user_id", user.id)
           .gte("exam_at", now.toISOString())
           .lte("exam_at", later.toISOString())
@@ -207,10 +204,10 @@ Deno.serve(async (req: Request) => {
           .limit(5),
         admin
           .from("study_sessions")
-          .select("course_id,title,start_at,end_at,status")
+          .select("id,course_id,assignment_id,title,start_at,end_at,status")
           .eq("user_id", user.id)
-          .gte("start_at", windowStart.toISOString())
-          .lte("start_at", soon.toISOString())
+          .gte("end_at", now.toISOString())
+          .lte("start_at", later.toISOString())
           .order("start_at")
           .limit(8),
         admin
@@ -220,35 +217,17 @@ Deno.serve(async (req: Request) => {
           .eq("reflection_date", localToday)
           .limit(1),
       ])
-      if (assignments?.length)
-        add(
-          "Upcoming assignments",
-          "assignment",
-          assignments.map((item: any) => ({
-            ...item,
-            course: courseById.get(item.course_id)?.course_code,
-          })),
-        )
-      if (exams?.length)
-        add(
-          "Upcoming exams",
-          "exam",
-          exams.map((item: any) => ({
-            ...item,
-            course: courseById.get(item.course_id)?.course_code,
-          })),
-        )
-      if (sessions?.length)
-        add(
-          "Study calendar",
-          "calendar",
-          sessions.map((item: any) => ({
-            ...item,
-            course: courseById.get(item.course_id)?.course_code,
-          })),
-        )
-      if (reflections?.length)
-        add("Today's reflection", "reflection", reflections[0])
+      const plan = buildSmartPlan({
+        assignments: assignments || [],
+        exams: exams || [],
+        studySessions: sessions || [],
+        courses: courses || [],
+        reflection: reflections?.[0] || null,
+        preferences: profile,
+        timeZone,
+        now,
+      })
+      add("Today's focus", "assignment", plan)
     }
     const { data: history = [], error: historyError } = await admin
       .from("companion_messages")
@@ -348,6 +327,7 @@ Handle retrieved materials in exactly one of these ways:
 - No relevant source found: say Pathly does not have enough information and suggest what the student could upload or add.
 
 If a lecture or syllabus source appears in AVAILABLE SOURCES, you found a retrieved document. Never say you do not have lecture notes, slides, or a source in that case. Check supplied material for filename/content mismatches, conflicting statements, dates, units, or arithmetic and put concise concerns in things_to_double_check. Cite only exact labels from AVAILABLE SOURCES. Do not mention AI providers or internal implementation. Do not use outside knowledge unless the student explicitly requests it.
+When Today's focus appears in AVAILABLE SOURCES, its deterministic priorities are authoritative. Preserve their order and recommend only those items; explain them conversationally without inventing or reprioritizing work. Treat overdue work as unresolved and ask whether it was submitted—never call it failed or missed. Mention schedule conflicts without moving anything automatically.
 AVAILABLE SOURCES: ${JSON.stringify(allowedLabels)}
 PATHLY CONTEXT:
 ${context.join("\n").slice(0, 24000)}`

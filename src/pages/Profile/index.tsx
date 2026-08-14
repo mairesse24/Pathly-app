@@ -20,6 +20,10 @@ const emptyProfile: ProfileMetadata = {
   catalog_year: null,
   expected_graduation_term: null,
   timezone: null,
+  preferred_study_time: null,
+  focus_session_minutes: null,
+  prefers_breaks: null,
+  break_duration_minutes: null,
 }
 
 export function ProfilePage() {
@@ -127,6 +131,87 @@ export function ProfilePage() {
                   }
                 />
               </label>
+              <label>
+                Preferred study time (optional)
+                <select
+                  value={draft.preferred_study_time ?? ""}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      preferred_study_time: event.target.value
+                        ? event.target.value as ProfileMetadata["preferred_study_time"]
+                        : null,
+                    })
+                  }
+                >
+                  <option value="">No preference</option>
+                  <option value="morning">Morning</option>
+                  <option value="afternoon">Afternoon</option>
+                  <option value="evening">Evening</option>
+                  <option value="late_night">Late night</option>
+                </select>
+              </label>
+              <label>
+                Typical focus session (optional)
+                <input
+                  type="number"
+                  min="10"
+                  max="240"
+                  list="focus-session-options"
+                  placeholder="Minutes"
+                  value={draft.focus_session_minutes ?? ""}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      focus_session_minutes: event.target.value
+                        ? Number(event.target.value)
+                        : null,
+                    })
+                  }
+                />
+                <datalist id="focus-session-options">
+                  {[25, 45, 60, 90].map((minutes) => (
+                    <option key={minutes} value={minutes} />
+                  ))}
+                </datalist>
+              </label>
+              <label>
+                Break preference (optional)
+                <select
+                  value={draft.prefers_breaks === null ? "" : draft.prefers_breaks ? "yes" : "no"}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      prefers_breaks: event.target.value === ""
+                        ? null
+                        : event.target.value === "yes",
+                    })
+                  }
+                >
+                  <option value="">No preference</option>
+                  <option value="yes">I like breaks</option>
+                  <option value="no">I usually study straight through</option>
+                </select>
+              </label>
+              {draft.prefers_breaks && (
+                <label>
+                  Preferred break duration
+                  <input
+                    type="number"
+                    min="1"
+                    max="60"
+                    value={draft.break_duration_minutes ?? ""}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        break_duration_minutes: event.target.value
+                          ? Number(event.target.value)
+                          : null,
+                      })
+                    }
+                  />
+                </label>
+              )}
               {saveError && (
                 <p className="form-message" role="alert">
                   {saveError}
