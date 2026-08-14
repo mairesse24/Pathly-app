@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js@2.5.0/edge-runtime.d.ts"
 import { createClient } from "@supabase/supabase-js"
 import JSZip from "jszip"
+import { academicRecordSchema, lectureSchema, syllabusSchema } from "../_shared/processingSchemas.mjs"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -10,39 +11,6 @@ const corsHeaders = {
 }
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: corsHeaders })
 const genericFailure = { error: "processing_failed", message: "We couldn't process this file. Your original file is still safely stored." }
-
-const syllabusSchema = {
-  type: "object", additionalProperties: false,
-  properties: {
-    course_summary: { type: "string" },
-    assignments: { type: "array", items: { type: "object", additionalProperties: false, properties: {
-      title: { type: "string" }, description: { type: ["string", "null"] }, due_at: { type: ["string", "null"] }, estimated_minutes: { type: ["integer", "null"] },
-    }, required: ["title", "description", "due_at", "estimated_minutes"] } },
-    exams: { type: "array", items: { type: "object", additionalProperties: false, properties: {
-      title: { type: "string" }, exam_at: { type: ["string", "null"] }, location: { type: ["string", "null"] }, topics_summary: { type: ["string", "null"] },
-    }, required: ["title", "exam_at", "location", "topics_summary"] } },
-  }, required: ["course_summary", "assignments", "exams"],
-}
-const lectureSchema = {
-  type: "object", additionalProperties: false,
-  properties: {
-    title: { type: "string" }, summary: { type: "string" },
-    key_concepts: { type: "array", items: { type: "string" } },
-    flashcards: { type: "array", items: { type: "object", additionalProperties: false, properties: { front: { type: "string" }, back: { type: "string" } }, required: ["front", "back"] } },
-    practice_questions: { type: "array", items: { type: "string" } },
-    topics_worth_reviewing: { type: "array", items: { type: "string" } },
-  }, required: ["title", "summary", "key_concepts", "flashcards", "practice_questions", "topics_worth_reviewing"],
-}
-const academicRecordSchema = {
-  type: "object", additionalProperties: false,
-  properties: { courses: { type: "array", items: { type: "object", additionalProperties: false, properties: {
-    course_code: { type: "string" }, course_title: { type: "string" }, credit_hours: { type: "number" },
-    term: { type: ["string", "null"], enum: ["Spring", "Summer", "Fall", "Winter", null] },
-    year: { type: ["integer", "null"] }, status: { type: "string", enum: ["completed", "in_progress"] },
-    requirement_label: { type: ["string", "null"] },
-  }, required: ["course_code", "course_title", "credit_hours", "term", "year", "status", "requirement_label"] } } },
-  required: ["courses"],
-}
 
 function readNamedKey(name: string, legacyName: string) {
   const legacy = Deno.env.get(legacyName)
