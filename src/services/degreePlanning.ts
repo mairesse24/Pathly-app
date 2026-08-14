@@ -1,5 +1,5 @@
 import { supabase } from "../lib/supabase"
-import type { CompletedCourse, DegreeProgram, RequirementGroup } from "../types/degreePlanning"
+import type { CompletedCourse, DegreeProgram, DegreeProgramMatch, RequirementGroup } from "../types/degreePlanning"
 
 export type CourseInput = Pick<CompletedCourse, "course_code" | "course_title" | "credit_hours" | "term" | "year" | "status">
 const normalize = (value: string) => value.trim().toUpperCase().replace(/\s+/g, " ")
@@ -22,12 +22,14 @@ export async function deleteCompletedCourse(id: string) {
   const { error } = await supabase.from("completed_courses").delete().eq("id", id)
   if (error) throw error
 }
-export async function getVerifiedProgram(university?: string | null, major?: string | null, catalogYear?: number | null) {
-  if (!university || !major || !catalogYear) return null
-  const { data, error } = await supabase.from("degree_programs").select("*")
-    .ilike("university", university.trim()).ilike("major", major.trim()).eq("catalog_year", catalogYear).maybeSingle()
+export async function matchVerifiedProgram(university?: string | null, major?: string | null, catalogYear?: number | null) {
+  const { data, error } = await supabase.rpc("match_degree_program", {
+    p_university: university ?? null,
+    p_major: major ?? null,
+    p_catalog_year: catalogYear ?? null,
+  })
   if (error) throw error
-  return data as DegreeProgram | null
+  return data as DegreeProgramMatch
 }
 export async function getRequirementGroups(programId: string) {
   const { data, error } = await supabase.from("requirement_groups")
@@ -51,4 +53,3 @@ export function calculateDegreeProgress(program: DegreeProgram, groups: Requirem
   })
   return { completedCredits, inProgressCredits, percent: Math.min(100, Math.round(completedCredits / Number(program.total_credits_required) * 100)), groupProgress }
 }
-

@@ -234,12 +234,15 @@ Deno.serve(async (req: Request) => {
     if (wantsDegree) {
       const { data: completed = [] } = await admin.from("completed_courses")
         .select("course_code,course_title,credit_hours,status").eq("user_id", user.id)
-      const { data: program } = profile?.university && profile?.major && profile?.catalog_year
-        ? await admin.from("degree_programs").select("id,university,degree,major,catalog_year,total_credits_required,source_title")
-          .ilike("university", profile.university).ilike("major", profile.major).eq("catalog_year", profile.catalog_year).maybeSingle()
-        : { data: null }
-      if (!program) {
-        add("Degree Planner", "course", { supported: false, university: profile?.university || null, major: profile?.major || null, catalog_year: profile?.catalog_year || null, message: "Pathly does not have verified requirements for this exact program and catalog year." })
+      const { data: programMatch, error: programMatchError } = await admin.rpc("match_degree_program", {
+        p_university: profile?.university || null,
+        p_major: profile?.major || null,
+        p_catalog_year: profile?.catalog_year || null,
+      })
+      if (programMatchError) throw programMatchError
+      const program = programMatch?.program
+      if (programMatch?.status !== "matched" || !program) {
+        add("Degree Planner", "course", { supported: false, ...programMatch })
       } else {
         const { data: groups = [] } = await admin.from("requirement_groups").select("id,name,requirement_type,minimum_credits").eq("program_id", program.id).order("sort_order")
         const groupIds = (groups || []).map((group: any) => group.id)
@@ -355,7 +358,7 @@ Handle retrieved materials in exactly one of these ways:
 
 If a lecture or syllabus source appears in AVAILABLE SOURCES, you found a retrieved document. Never say you do not have lecture notes, slides, or a source in that case. Check supplied material for filename/content mismatches, conflicting statements, dates, units, or arithmetic and put concise concerns in things_to_double_check. Cite only exact labels from AVAILABLE SOURCES. Do not mention AI providers or internal implementation. Do not use outside knowledge unless the student explicitly requests it.
 When Today's focus appears in AVAILABLE SOURCES, its deterministic priorities are authoritative. Preserve their order and recommend only those items; explain them conversationally without inventing or reprioritizing work. Treat overdue work as unresolved and ask whether it was submitted—never call it failed or missed. Mention schedule conflicts without moving anything automatically.
-When Degree Planner appears in AVAILABLE SOURCES, its structured calculations are authoritative. Report only those values. If supported is false, say verified requirements are unavailable; never calculate or infer degree progress yourself. Never treat Canvas enrollments as completed coursework.
+When Degree Planner appears in AVAILABLE SOURCES, its structured calculations are authoritative. Report only those values. If supported is false, use its exact message to explain whether academic details are missing, the program is recognized but the catalog year is missing or unsupported, or no verified program is available. Suggest Academic Details when a profile field needs attention. Never calculate or infer degree progress yourself. Never treat Canvas enrollments as completed coursework.
 AVAILABLE SOURCES: ${JSON.stringify(allowedLabels)}
 PATHLY CONTEXT:
 ${context.join("\n").slice(0, 24000)}`

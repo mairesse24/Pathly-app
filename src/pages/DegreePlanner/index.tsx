@@ -4,8 +4,8 @@ import { PageHeader } from "../../components/layout/PageHeader"
 import { Button } from "../../components/ui/Button"
 import { Card } from "../../components/ui/Card"
 import { useProfile } from "../../context/ProfileContext"
-import { calculateDegreeProgress, deleteCompletedCourse, getRequirementGroups, getVerifiedProgram, listCompletedCourses, saveCompletedCourse, type CourseInput } from "../../services/degreePlanning"
-import type { CompletedCourse, DegreeProgram, RequirementGroup } from "../../types/degreePlanning"
+import { calculateDegreeProgress, deleteCompletedCourse, getRequirementGroups, listCompletedCourses, matchVerifiedProgram, saveCompletedCourse, type CourseInput } from "../../services/degreePlanning"
+import type { CompletedCourse, DegreeProgram, DegreeProgramMatch, RequirementGroup } from "../../types/degreePlanning"
 
 const empty: CourseInput = { course_code: "", course_title: "", credit_hours: 3, term: null, year: null, status: "completed" }
 
@@ -14,6 +14,7 @@ export function DegreePlannerPage() {
   const navigate = useNavigate()
   const [courses, setCourses] = useState<CompletedCourse[]>([])
   const [program, setProgram] = useState<DegreeProgram | null>(null)
+  const [programMatch, setProgramMatch] = useState<DegreeProgramMatch | null>(null)
   const [groups, setGroups] = useState<RequirementGroup[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -28,11 +29,12 @@ export function DegreePlannerPage() {
     try {
       const [items, match] = await Promise.all([
         listCompletedCourses(),
-        getVerifiedProgram(profile?.university, profile?.major, profile?.catalog_year),
+        matchVerifiedProgram(profile?.university, profile?.major, profile?.catalog_year),
       ])
       setCourses(items)
-      setProgram(match)
-      setGroups(match ? await getRequirementGroups(match.id) : [])
+      setProgramMatch(match)
+      setProgram(match.program)
+      setGroups(match.program ? await getRequirementGroups(match.program.id) : [])
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to load your degree plan.")
     } finally {
@@ -42,7 +44,6 @@ export function DegreePlannerPage() {
 
   useEffect(() => { void load() }, [profileLoading, profile?.university, profile?.major, profile?.catalog_year])
   const progress = useMemo(() => program ? calculateDegreeProgress(program, groups, courses) : null, [program, groups, courses])
-  const missing = [!profile?.university && "university", !profile?.major && "major", !profile?.catalog_year && "catalog year"].filter(Boolean)
 
   async function save(event: FormEvent) {
     event.preventDefault()
@@ -74,7 +75,7 @@ export function DegreePlannerPage() {
   return <><PageHeader title="Degree plan"/><main className="page degree-planner-page">
     <div className="intro-row"><div><h2>Build an accurate degree plan.</h2><p>Progress is calculated only from coursework you confirm and verified program requirements.</p></div></div>
     <Card className="degree-metadata"><p className="eyebrow">Program information</p><h3>{profile?.major || "Major not added"}</h3><p>{profile?.university || "University not added"}{profile?.catalog_year ? ` · ${profile.catalog_year} catalog` : ""}</p>{(profile?.graduation_year || profile?.expected_graduation_term) && <p>Expected graduation: {[profile.expected_graduation_term, profile.graduation_year].filter(Boolean).join(" ")} (provided by you; not a Pathly prediction)</p>}<Button variant="secondary" onClick={() => navigate("/settings")}>Edit in Settings</Button></Card>
-    {loading ? <Card><p>Loading your academic record…</p></Card> : missing.length ? <TruthfulState title="We don't know your degree progress yet." text={`Add your ${missing.join(", ")} in Settings, then add completed courses or upload a degree audit.`}/> : !program ? <TruthfulState title="Pathly doesn't have verified requirements for your program yet." text="You can still store completed courses. Pathly will not estimate progress without a reviewed requirement source."/> : !courses.some((course) => course.status === "completed") ? <TruthfulState title="Add completed courses to calculate your progress." text="Enter coursework manually or upload a degree audit or unofficial transcript for review."/> : progress && <>
+    {loading ? <Card><p>Loading your academic record…</p></Card> : programMatch?.status === "missing_academic_details" ? <TruthfulState title="We need more academic details." text={programMatch.message} action="Add academic details" onAction={() => navigate("/settings")}/> : programMatch?.status === "missing_catalog_year" ? <TruthfulState title={programMatch.message} text={catalogSupportText(programMatch)} action="Add catalog year" onAction={() => navigate("/settings")}/> : programMatch?.status === "unsupported_catalog_year" ? <TruthfulState title="Your program is recognized, but this catalog year isn't supported yet." text={`${programMatch.message} ${catalogSupportText(programMatch)}`} action="Edit catalog year" onAction={() => navigate("/settings")}/> : programMatch?.status === "program_unavailable" ? <TruthfulState title="Pathly doesn't have verified requirements for your program yet." text="You can still store completed courses. Pathly will not estimate progress without a reviewed requirement source."/> : !program ? <TruthfulState title="We couldn't match your degree program." text="Check your Academic Details and try again." action="Edit academic details" onAction={() => navigate("/settings")}/> : !courses.some((course) => course.status === "completed") ? <TruthfulState title="Add completed courses to calculate your progress." text="Enter coursework manually or upload a degree audit or unofficial transcript for review."/> : progress && <>
       <Card className="degree-progress-card"><p className="eyebrow">Confirmed degree progress</p><h2>{progress.completedCredits} of {program.total_credits_required} credits confirmed</h2><div className="wide-progress" aria-label={`${progress.percent}% complete`}><i style={{width:`${progress.percent}%`}}/></div><strong>{progress.percent}% complete</strong>{progress.inProgressCredits > 0 && <p>In progress: {progress.inProgressCredits} credits (not counted as completed)</p>}<small>Verified source: <a href={program.source_url} target="_blank" rel="noreferrer">{program.source_title}</a></small></Card>
       <div className="degree-requirements">{progress.groupProgress.map((group) => <Card key={group.id}><p className="eyebrow">Requirement group</p><h3>{group.name}</h3><p>{group.completedCredits} of {group.minimum_credits} credits confirmed</p>{group.remaining.length > 0 && <p>Remaining: {group.remaining.join(", ")}</p>}</Card>)}</div>
     </>}
@@ -95,6 +96,11 @@ export function DegreePlannerPage() {
   </main></>
 }
 
-function TruthfulState({title, text}: {title: string; text: string}) {
-  return <Card className="degree-empty-state"><p className="eyebrow">Degree progress</p><h2>{title}</h2><p>{text}</p></Card>
+function catalogSupportText(match: DegreeProgramMatch) {
+  if (match.canonical_university === "University of North Texas" && match.canonical_major === "Computer Science" && match.supported_catalog_years.includes(2024)) return "Pathly currently has verified requirements for the 2024–2025 UNT Computer Science catalog."
+  return match.supported_catalog_years.length ? `Verified catalog years available: ${match.supported_catalog_years.join(", ")}.` : ""
+}
+
+function TruthfulState({title, text, action, onAction}: {title: string; text: string; action?: string; onAction?: () => void}) {
+  return <Card className="degree-empty-state"><p className="eyebrow">Degree progress</p><h2>{title}</h2><p>{text}</p>{action && onAction && <Button onClick={onAction}>{action}</Button>}</Card>
 }
