@@ -1,33 +1,57 @@
 import { useEffect, useState } from "react"
+
 import { useNavigate } from "react-router-dom"
+
 import { FocusItem } from "../../components/dashboard/FocusItem"
+
 import { PageHeader } from "../../components/layout/PageHeader"
+
 import { Badge } from "../../components/ui/Badge"
+
 import { Button } from "../../components/ui/Button"
+
 import { Card } from "../../components/ui/Card"
+
 import { Icon } from "../../components/ui/Icon"
+
 import { useAcademicData } from "../../context/AcademicDataContext"
+
 import { useProfile } from "../../context/ProfileContext"
-const sameDay = (value: string | null) =>
-  value ? new Date(value).toDateString() === new Date().toDateString() : false
-const needsConfirmation = (dueAt: string | null) =>
-  Boolean(dueAt && new Date(dueAt) < new Date() && !sameDay(dueAt))
+import { dateKey, dayGreeting, formatInstant, todayKey } from "../../utils/dateTime"
 export function DashboardPage() {
   const { profile } = useProfile()
+  const timezone = profile?.timezone
+  const today = todayKey(timezone)
+  const sameDay = (value: string | null) =>
+    Boolean(value && dateKey(value, timezone) === today)
+  const needsConfirmation = (dueAt: string | null) =>
+    Boolean(dueAt && dateKey(dueAt, timezone) < today)
   const {
     assignments,
+
     courses,
+
     exams,
+
     studySessions,
+
     reflection,
+
     loading,
+
     error,
+
     setAssignmentStatus,
+
     persistReflection,
   } = useAcademicData()
+
   const navigate = useNavigate()
+
   const active = assignments.filter((a) => a.status !== "completed")
+
   const focus = active
+
     .filter(
       (a) =>
         sameDay(a.due_at) ||
@@ -35,20 +59,26 @@ export function DashboardPage() {
         a.status === "overdue" ||
         a.status === "awaiting_confirmation",
     )
+
     .slice(0, 3)
+
   const nextExam = exams.find(
     (e) => e.exam_at && new Date(e.exam_at) >= new Date(),
   )
+
   const todaySessions = studySessions.filter(
     (s) => sameDay(s.start_at) && s.status === "scheduled",
   )
+
   const completed = assignments.filter((a) => a.status === "completed").length
+
   const courseName = (id: string) =>
     courses.find((c) => c.id === id)?.course_code ?? "Course"
+
   return (
     <>
       <PageHeader
-        title={`Good morning, ${profile?.display_name.split(/\s+/)[0] || "student"}.`}
+        title={`${dayGreeting(timezone)}, ${profile?.display_name.split(/\s+/)[0] || "student"}.`}
       />
       <main className="page dashboard">
         <div className="welcome">
@@ -79,11 +109,14 @@ export function DashboardPage() {
                     onToggle={() => void setAssignmentStatus(a.id, "completed")}
                     task={{
                       id: a.id,
+
                       title: `${courseName(a.course_id)} — ${a.title}`,
+
                       detail:
                         a.status === "overdue" || needsConfirmation(a.due_at)
                           ? "Overdue — confirm when complete"
                           : (a.description ?? "Due today"),
+
                       duration: a.estimated_minutes
                         ? `${a.estimated_minutes} min`
                         : "Flexible",
@@ -111,7 +144,10 @@ export function DashboardPage() {
                   </h3>
                   <p>
                     {nextExam.exam_at &&
-                      new Date(nextExam.exam_at).toLocaleString()}
+                      formatInstant(nextExam.exam_at, timezone, {
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                      })}
                   </p>
                   <div className="exam-footer">
                     <button
@@ -133,7 +169,7 @@ export function DashboardPage() {
                   <div key={s.id}>
                     <h3>{s.title}</h3>
                     <p>
-                      {new Date(s.start_at).toLocaleTimeString([], {
+                      {formatInstant(s.start_at, timezone, {
                         hour: "numeric",
                         minute: "2-digit",
                       })}
@@ -162,13 +198,16 @@ export function DashboardPage() {
             </div>
             <div className="schedule-list">
               {active
+
                 .filter((a) => !sameDay(a.due_at))
+
                 .slice(0, 4)
+
                 .map((a) => (
                   <div key={a.id}>
                     <b>
                       {a.due_at
-                        ? new Date(a.due_at).toLocaleDateString(undefined, {
+                        ? formatInstant(a.due_at, timezone, {
                             month: "short",
                             day: "numeric",
                           })
@@ -197,13 +236,18 @@ export function DashboardPage() {
     </>
   )
 }
+
 function ReflectionCard({
   initialMood,
+
   initialNotes,
+
   onSave,
 }: {
   initialMood: string
+
   initialNotes: string
+
   onSave: (m: string, n: string) => Promise<unknown>
 }) {
   const [mood, setMood] = useState(initialMood),
@@ -212,24 +256,33 @@ function ReflectionCard({
       "idle",
     ),
     [saveError, setSaveError] = useState("")
+
   useEffect(() => {
     setMood(initialMood)
+
     setNotes(initialNotes)
   }, [initialMood, initialNotes])
+
   async function save() {
     setStatus("saving")
+
     setSaveError("")
+
     try {
       await onSave(mood, notes)
+
       setStatus("saved")
     } catch (reason) {
       setStatus("error")
+
       setSaveError(
         reason instanceof Error ? reason.message : "Unable to save reflection",
       )
     }
   }
+
   const moods = ["strained", "low", "steady", "good", "rested"]
+
   return (
     <Card className="reflection">
       <p className="eyebrow">Daily reflection</p>
@@ -241,6 +294,7 @@ function ReflectionCard({
             className={mood === m ? "selected" : ""}
             onClick={() => {
               setMood(m)
+
               setStatus("idle")
             }}
             aria-label={`Mood ${m}`}
@@ -253,6 +307,7 @@ function ReflectionCard({
         value={notes}
         onChange={(e) => {
           setNotes(e.target.value)
+
           setStatus("idle")
         }}
         aria-label="Reflection note"

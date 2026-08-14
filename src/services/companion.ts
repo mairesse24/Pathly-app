@@ -3,6 +3,7 @@ import type {
   CompanionConversation,
   CompanionMessage,
 } from "../types/companion"
+import { browserTimeZone } from "../utils/dateTime"
 
 export async function getLatestCompanionConversation() {
   const { data: conversation, error } = await supabase
@@ -35,6 +36,7 @@ export async function sendCompanionMessage(input: {
       conversation_id: input.conversationId,
       message: input.message,
       request_id: input.requestId,
+      timezone: browserTimeZone(),
     },
   })
   if (error || data?.error || !data?.message)

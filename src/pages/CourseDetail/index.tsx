@@ -1,25 +1,51 @@
 import { useEffect, useState } from "react"
+
 import { Navigate, useNavigate, useParams } from "react-router-dom"
+
 import { PageHeader } from "../../components/layout/PageHeader"
+
 import { Button } from "../../components/ui/Button"
+
 import { Card } from "../../components/ui/Card"
+
 import { useAcademicData } from "../../context/AcademicDataContext"
-import { downloadUpload, formatBytes, listUploads } from "../../services/uploads"
+import { useProfile } from "../../context/ProfileContext"
+import {
+  downloadUpload,
+  formatBytes,
+  listUploads,
+} from "../../services/uploads"
+
 import type { UploadedFileRecord } from "../../types/uploads"
+import { formatInstant } from "../../utils/dateTime"
 
 export function CourseDetailPage() {
+  const { profile } = useProfile()
   const { courseId } = useParams()
+
   const navigate = useNavigate()
+
   const { courses, assignments, exams, studySessions, loading } =
     useAcademicData()
+
   const [files, setFiles] = useState<UploadedFileRecord[]>([])
+
   const [fileError, setFileError] = useState("")
+
   useEffect(() => {
     if (!courseId) return
-    listUploads(courseId).then(setFiles).catch((reason: unknown) =>
-      setFileError(reason instanceof Error ? reason.message : "Unable to load course files."),
-    )
+
+    listUploads(courseId)
+      .then(setFiles)
+      .catch((reason: unknown) =>
+        setFileError(
+          reason instanceof Error
+            ? reason.message
+            : "Unable to load course files.",
+        ),
+      )
   }, [courseId])
+
   if (loading)
     return (
       <>
@@ -29,16 +55,22 @@ export function CourseDetailPage() {
         </main>
       </>
     )
+
   const course = courses.find((item) => item.id === courseId)
+
   if (!course) return <Navigate to="/study" replace />
+
   const courseAssignments = assignments.filter(
     (item) => item.course_id === course.id,
   )
+
   const courseExams = exams.filter((item) => item.course_id === course.id)
+
   const sessions = studySessions.filter(
     (item) =>
       item.course_id === course.id && new Date(item.start_at) >= new Date(),
   )
+
   const meeting =
     course.meeting_days?.length || course.meeting_start
       ? `${course.meeting_days?.join(", ") || "Day not provided"}${
@@ -49,6 +81,7 @@ export function CourseDetailPage() {
             : ""
         }`
       : "Not provided"
+
   return (
     <>
       <PageHeader title={course.course_code} />
@@ -82,7 +115,7 @@ export function CourseDetailPage() {
               (item) =>
                 `${item.title}${
                   item.due_at
-                    ? ` · ${new Date(item.due_at).toLocaleString()}`
+                    ? ` · ${formatInstant(item.due_at, profile?.timezone, { dateStyle: "medium", timeStyle: "short" })}`
                     : ""
                 }`,
             )}
@@ -94,7 +127,7 @@ export function CourseDetailPage() {
               (item) =>
                 `${item.title}${
                   item.exam_at
-                    ? ` · ${new Date(item.exam_at).toLocaleString()}`
+                    ? ` · ${formatInstant(item.exam_at, profile?.timezone, { dateStyle: "medium", timeStyle: "short" })}`
                     : ""
                 }`,
             )}
@@ -104,19 +137,46 @@ export function CourseDetailPage() {
             empty="No upcoming sessions."
             items={sessions.map(
               (item) =>
-                `${item.title} · ${new Date(item.start_at).toLocaleString()}`,
+                `${item.title} · ${formatInstant(item.start_at, profile?.timezone, { dateStyle: "medium", timeStyle: "short" })}`,
             )}
           />
           <Card>
             <p className="eyebrow">Course files</p>
-            {fileError ? <p className="form-message">{fileError}</p> : files.length ? <ul className="plain-list file-links">{files.map((file) => <li key={file.id}><button className="text-button" onClick={() => void downloadUpload(file)}>{file.original_filename}</button><small>{formatBytes(file.size_bytes)} · Uploaded — AI processing not yet enabled</small></li>)}</ul> : <p>No files associated with this course.</p>}
-            <Button variant="secondary" onClick={() => navigate("/uploads?category=syllabus")}>Upload course material</Button>
+            {fileError ? (
+              <p className="form-message">{fileError}</p>
+            ) : files.length ? (
+              <ul className="plain-list file-links">
+                {files.map((file) => (
+                  <li key={file.id}>
+                    <button
+                      className="text-button"
+                      onClick={() => void downloadUpload(file)}
+                    >
+                      {file.original_filename}
+                    </button>
+                    <small>
+                      {formatBytes(file.size_bytes)} · Uploaded — AI processing
+                      not yet enabled
+                    </small>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>No files associated with this course.</p>
+            )}
+            <Button
+              variant="secondary"
+              onClick={() => navigate("/uploads?category=syllabus")}
+            >
+              Upload course material
+            </Button>
           </Card>
         </div>
       </main>
     </>
   )
 }
+
 function Detail({ label, value }: { label: string; value: string }) {
   return (
     <div className="detail-row">
@@ -125,13 +185,18 @@ function Detail({ label, value }: { label: string; value: string }) {
     </div>
   )
 }
+
 function ListCard({
   title,
+
   empty,
+
   items,
 }: {
   title: string
+
   empty: string
+
   items: string[]
 }) {
   return (

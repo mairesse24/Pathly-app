@@ -40,6 +40,15 @@ function relevance(query: string, candidate: string) {
 function compact(value: unknown, max = 6000) {
   return JSON.stringify(value).slice(0, max)
 }
+function validTimeZone(value: unknown) {
+  if (typeof value !== "string" || value.length > 100) return "UTC"
+  try { new Intl.DateTimeFormat("en-US", { timeZone: value }).format(); return value } catch { return "UTC" }
+}
+function localDateKey(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date)
+  const part = (type: string) => parts.find((item) => item.type === type)?.value
+  return `${part("year")}-${part("month")}-${part("day")}`
+}
 
 const responseSchema = {
   type: "object",
@@ -89,6 +98,7 @@ Deno.serve(async (req: Request) => {
     const body = await req.json()
     const message = typeof body.message === "string" ? body.message.trim() : ""
     const requestId = typeof body.request_id === "string" ? body.request_id : ""
+    const requestedTimeZone = validTimeZone(body.timezone)
     let conversationId =
       typeof body.conversation_id === "string" ? body.conversation_id : ""
     if (
@@ -174,9 +184,13 @@ Deno.serve(async (req: Request) => {
     const courseById = new Map(
       (courses || []).map((course: any) => [course.id, course]),
     )
+    const { data: profile } = await admin.from("profiles").select("timezone").eq("id", user.id).maybeSingle()
+    const timeZone = validTimeZone(profile?.timezone || requestedTimeZone)
+    const localToday = localDateKey(new Date(), timeZone)
 
     if (wantsPlanning) {
       const now = new Date()
+      const windowStart = new Date(now.getTime() - 24 * 86400000)
       const soon = new Date(now.getTime() + 14 * 86400000)
       const later = new Date(now.getTime() + 30 * 86400000)
       const [
@@ -190,7 +204,7 @@ Deno.serve(async (req: Request) => {
           .select("course_id,title,due_at,estimated_minutes,status")
           .eq("user_id", user.id)
           .neq("status", "completed")
-          .gte("due_at", now.toISOString())
+          .gte("due_at", windowStart.toISOString())
           .lte("due_at", soon.toISOString())
           .order("due_at")
           .limit(8),
@@ -206,7 +220,7 @@ Deno.serve(async (req: Request) => {
           .from("study_sessions")
           .select("course_id,title,start_at,end_at,status")
           .eq("user_id", user.id)
-          .gte("start_at", now.toISOString())
+          .gte("start_at", windowStart.toISOString())
           .lte("start_at", soon.toISOString())
           .order("start_at")
           .limit(8),
@@ -214,7 +228,7 @@ Deno.serve(async (req: Request) => {
           .from("daily_reflections")
           .select("reflection_date,mood,energy,notes")
           .eq("user_id", user.id)
-          .eq("reflection_date", now.toISOString().slice(0, 10))
+          .eq("reflection_date", localToday)
           .limit(1),
       ])
       if (assignments?.length)
@@ -315,7 +329,7 @@ Deno.serve(async (req: Request) => {
     const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY") || ""
     if (!anthropicKey) throw new Error("ANTHROPIC_API_KEY is not configured")
     const allowedLabels = sources.map((source) => source.label)
-    const system = `You are Pathly Companion, a grounded academic planning assistant. Use only the supplied Pathly context. Clearly distinguish stored facts, information extracted from processed material, and your recommendations. If context is missing, say so and suggest the next useful action. Never invent deadlines, grades, exam coverage, course requirements, or degree requirements. For planning, give 1-3 realistic priorities; adapt gently to a low-energy reflection without diagnosing the student. Check supplied material for conflicting statements, dates, units, or arithmetic and put concise concerns in things_to_double_check. Cite only exact labels from AVAILABLE SOURCES. Do not mention AI providers or internal implementation.\nAVAILABLE SOURCES: ${JSON.stringify(allowedLabels)}\nPATHLY CONTEXT:\n${context.join("\n").slice(0, 24000)}`
+    const system = `You are Pathly Companion, a grounded academic planning assistant. The student's current local date is ${localToday} in ${timeZone}. Use only the supplied Pathly context. Clearly distinguish stored facts, information extracted from processed material, and your recommendations. If context is missing, say so and suggest the next useful action. Never invent deadlines, grades, exam coverage, course requirements, or degree requirements. For planning, give 1-3 realistic priorities; adapt gently to a low-energy reflection without diagnosing the student. Check supplied material for conflicting statements, dates, units, or arithmetic and put concise concerns in things_to_double_check. Cite only exact labels from AVAILABLE SOURCES. Do not mention AI providers or internal implementation.\nAVAILABLE SOURCES: ${JSON.stringify(allowedLabels)}\nPATHLY CONTEXT:\n${context.join("\n").slice(0, 24000)}`
     const claudeResponse = await fetch(
       "https://api.anthropic.com/v1/messages",
       {
