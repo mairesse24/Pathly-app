@@ -1,0 +1,46 @@
+import { supabase } from "../lib/supabase"
+import type {
+  CompanionConversation,
+  CompanionMessage,
+} from "../types/companion"
+
+export async function getLatestCompanionConversation() {
+  const { data: conversation, error } = await supabase
+    .from("companion_conversations")
+    .select("*")
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  if (!conversation) return { conversation: null, messages: [] }
+  const { data: messages, error: messagesError } = await supabase
+    .from("companion_messages")
+    .select("*")
+    .eq("conversation_id", conversation.id)
+    .order("created_at")
+  if (messagesError) throw messagesError
+  return {
+    conversation: conversation as CompanionConversation,
+    messages: messages as CompanionMessage[],
+  }
+}
+
+export async function sendCompanionMessage(input: {
+  conversationId: string | null
+  message: string
+  requestId: string
+}) {
+  const { data, error } = await supabase.functions.invoke("pathly-companion", {
+    body: {
+      conversation_id: input.conversationId,
+      message: input.message,
+      request_id: input.requestId,
+    },
+  })
+  if (error || data?.error || !data?.message)
+    throw new Error("companion_failed")
+  return {
+    conversation: data.conversation as CompanionConversation,
+    message: data.message as CompanionMessage,
+  }
+}
