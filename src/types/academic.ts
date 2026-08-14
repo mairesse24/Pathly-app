@@ -18,6 +18,9 @@ export type CourseRecord = {
   meeting_days: string[] | null
   meeting_start: string | null
   meeting_end: string | null
+  source?: "manual" | "canvas"
+  canvas_connection_id?: string | null
+  canvas_course_id?: string | null
 }
 export type AssignmentRecord = {
   id: string
@@ -29,6 +32,13 @@ export type AssignmentRecord = {
   estimated_minutes: number | null
   status: AssignmentStatus
   source: string
+  canvas_connection_id?: string | null
+  canvas_assignment_id?: string | null
+  canvas_course_id?: string | null
+  canvas_due_at?: string | null
+  canvas_available_from?: string | null
+  canvas_available_until?: string | null
+  canvas_submission_status?: "submitted" | "unsubmitted" | "late" | "missing" | "unknown" | null
 }
 export type ExamRecord = {
   id: string

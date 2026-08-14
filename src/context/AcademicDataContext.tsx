@@ -48,6 +48,8 @@ type Value = {
 
   error: string
 
+  refreshAcademicData: () => Promise<void>
+
   addCourse: (
     v: Pick<CourseRecord, "course_code" | "course_name">,
   ) => Promise<void>
@@ -222,6 +224,8 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
         loading,
 
         error,
+
+        refreshAcademicData: load,
 
         addCourse,
 
