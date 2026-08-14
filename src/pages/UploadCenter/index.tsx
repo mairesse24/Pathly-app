@@ -76,6 +76,7 @@ export function UploadCenterPage() {
   const [results, setResults] = useState<ProcessingResultRecord[]>([])
 
   const [processingId, setProcessingId] = useState("")
+  const [latestUploadedId, setLatestUploadedId] = useState("")
 
   const [state, setState] =
     useState<"idle" | "validating" | "uploading" | "success" | "error">("idle")
@@ -97,6 +98,14 @@ export function UploadCenterPage() {
         )
       })
   }, [])
+
+  useEffect(() => {
+    if (!latestUploadedId) return
+    document.getElementById(`upload-${latestUploadedId}`)?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    })
+  }, [latestUploadedId])
 
   const sensitive =
     category === "degree_audit" || category === "unofficial_transcript"
@@ -142,6 +151,7 @@ export function UploadCenterPage() {
       })
 
       setFiles((current) => [row, ...current])
+      setLatestUploadedId(row.id)
       setFile(null)
 
       if (inputRef.current) inputRef.current.value = ""
@@ -387,17 +397,21 @@ export function UploadCenterPage() {
                     ? "Review syllabus"
                     : row.category === "lecture"
                       ? "Create study materials"
-                      : "Review academic record"
+                      : row.category === "unofficial_transcript"
+                        ? "Review transcript"
+                        : "Review degree audit"
 
               const supportingCopy =
                 row.category === "syllabus"
                   ? "Pathly can identify important dates, assignments, exams, and course information for you to review."
                   : row.category === "lecture"
                     ? "Pathly can turn this material into a summary, key concepts, flashcards, and practice questions."
-                    : "Pathly can identify candidate coursework for you to review. Nothing is added until you confirm it."
+                    : row.category === "unofficial_transcript"
+                      ? "Pathly can identify completed and in-progress courses from this document. You'll review everything before it is added."
+                      : "Pathly can identify completed and in-progress courses from this degree audit. You'll review everything before it is added."
 
               return (
-                <div key={row.id} className="upload-with-review">
+                <div key={row.id} id={`upload-${row.id}`} className="upload-with-review">
                   <Card className="uploaded-file-row">
                     <div>
                       <p className="eyebrow">{labels[row.category]}</p>
@@ -415,8 +429,9 @@ export function UploadCenterPage() {
                       )}
                       {row.processing_status === "processing_failed" && (
                         <p className="processing-failure" role="alert">
-                          We couldn&apos;t process this file. Your original file
-                          is still safely stored.
+                          {row.category === "degree_audit" || row.category === "unofficial_transcript"
+                            ? "We couldn't review this document. Your original file is still safely stored."
+                            : "We couldn't process this file. Your original file is still safely stored."}
                         </p>
                       )}
                       {processable && !result && !isProcessing && (
