@@ -58,7 +58,7 @@ type Value = {
     status: AssignmentRecord["status"],
   ) => Promise<void>
 
-  persistReflection: (mood: string, notes: string) => Promise<ReflectionRecord>
+  persistReflection: (mood: string, energy: string, notes: string) => Promise<ReflectionRecord>
 }
 
 const Context = createContext<Value | undefined>(undefined)
@@ -185,7 +185,7 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
     setAssignments((x) => x.map((a) => (a.id === id ? row : a)))
   }
 
-  async function persistReflection(mood: string, notes: string) {
+  async function persistReflection(mood: string, energy: string, notes: string) {
     if (!user) throw new Error("You must be signed in to save a reflection")
 
     const row = await reflectionService.saveReflection({
@@ -194,7 +194,7 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
       reflection_date: today,
       mood,
 
-      energy: null,
+      energy: energy || null,
 
       notes,
     })

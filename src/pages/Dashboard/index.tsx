@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 
 import { useNavigate } from "react-router-dom"
 
@@ -18,14 +18,13 @@ import { useAcademicData } from "../../context/AcademicDataContext"
 
 import { useProfile } from "../../context/ProfileContext"
 import { dateKey, dayGreeting, formatInstant, todayKey } from "../../utils/dateTime"
+import { buildSmartPlan } from "../../utils/smartPlanning"
 export function DashboardPage() {
   const { profile } = useProfile()
   const timezone = profile?.timezone
   const today = todayKey(timezone)
   const sameDay = (value: string | null) =>
     Boolean(value && dateKey(value, timezone) === today)
-  const needsConfirmation = (dueAt: string | null) =>
-    Boolean(dueAt && dateKey(dueAt, timezone) < today)
   const {
     assignments,
 
@@ -50,17 +49,18 @@ export function DashboardPage() {
 
   const active = assignments.filter((a) => a.status !== "completed")
 
-  const focus = active
-
-    .filter(
-      (a) =>
-        sameDay(a.due_at) ||
-        needsConfirmation(a.due_at) ||
-        a.status === "overdue" ||
-        a.status === "awaiting_confirmation",
-    )
-
-    .slice(0, 3)
+  const plan = useMemo(
+    () => buildSmartPlan({
+      assignments,
+      exams,
+      studySessions,
+      courses,
+      reflection,
+      preferences: profile,
+      timeZone: timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+    }),
+    [assignments, courses, exams, profile, reflection, studySessions, timezone],
+  )
 
   const nextExam = exams.find(
     (e) => e.exam_at && new Date(e.exam_at) >= new Date(),
@@ -100,33 +100,34 @@ export function DashboardPage() {
             <div className="focus-list">
               {loading ? (
                 <p>Loading your work…</p>
-              ) : focus.length ? (
-                focus.map((a, index) => (
+              ) : plan.priorities.length ? (
+                plan.priorities.map((priority, index) => (
                   <FocusItem
-                    key={a.id}
+                    key={`${priority.kind}-${priority.id}`}
                     number={index + 1}
-                    completed={false}
-                    onToggle={() => void setAssignmentStatus(a.id, "completed")}
+                    actionLabel={priority.kind === "exam"
+                      ? "Review plan"
+                      : priority.needsStatusConfirmation
+                        ? "I submitted it"
+                        : "Mark complete"}
+                    onAction={() => priority.kind === "exam"
+                      ? navigate("/study")
+                      : void setAssignmentStatus(priority.id, "completed")}
                     task={{
-                      id: a.id,
-
-                      title: `${courseName(a.course_id)} — ${a.title}`,
-
-                      detail:
-                        a.status === "overdue" || needsConfirmation(a.due_at)
-                          ? "Overdue — confirm when complete"
-                          : (a.description ?? "Due today"),
-
-                      duration: a.estimated_minutes
-                        ? `${a.estimated_minutes} min`
-                        : "Flexible",
+                      id: priority.id,
+                      title: `${priority.courseCode} — ${priority.title}`,
+                      detail: priority.reason,
+                      duration: `${priority.suggestedMinutes} min`,
                     }}
                   />
                 ))
               ) : (
-                <p>No assignments need your attention today.</p>
+                <p>Nothing urgent right now.</p>
               )}
             </div>
+            {plan.energyAdjustment === "low" && plan.priorities.length > 0 && (
+              <p className="planning-note">Keeping today lighter while protecting urgent deadlines.</p>
+            )}
             <div className="focus-footer">
               <span>Everything else can wait.</span>
             </div>
@@ -179,6 +180,16 @@ export function DashboardPage() {
               ) : (
                 <p>No sessions scheduled today.</p>
               )}
+              {plan.conflicts.length > 0 && (
+                <div className="planning-warning" role="status">
+                  <strong>Schedule conflict</strong>
+                  <p>{plan.conflicts[0].message}</p>
+                  <div className="planning-actions">
+                    <Button variant="secondary" onClick={() => navigate("/calendar")}>Edit</Button>
+                    <Button variant="quiet">Ignore</Button>
+                  </div>
+                </div>
+              )}
             </Card>
           </aside>
         </div>
@@ -228,6 +239,7 @@ export function DashboardPage() {
           </Card>
           <ReflectionCard
             initialMood={reflection?.mood ?? ""}
+            initialEnergy={reflection?.energy ?? ""}
             initialNotes={reflection?.notes ?? ""}
             onSave={persistReflection}
           />
@@ -240,6 +252,8 @@ export function DashboardPage() {
 function ReflectionCard({
   initialMood,
 
+  initialEnergy,
+
   initialNotes,
 
   onSave,
@@ -248,9 +262,12 @@ function ReflectionCard({
 
   initialNotes: string
 
-  onSave: (m: string, n: string) => Promise<unknown>
+  initialEnergy: string
+
+  onSave: (m: string, e: string, n: string) => Promise<unknown>
 }) {
   const [mood, setMood] = useState(initialMood),
+    [energy, setEnergy] = useState(initialEnergy),
     [notes, setNotes] = useState(initialNotes),
     [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">(
       "idle",
@@ -260,8 +277,10 @@ function ReflectionCard({
   useEffect(() => {
     setMood(initialMood)
 
+    setEnergy(initialEnergy)
+
     setNotes(initialNotes)
-  }, [initialMood, initialNotes])
+  }, [initialEnergy, initialMood, initialNotes])
 
   async function save() {
     setStatus("saving")
@@ -269,7 +288,7 @@ function ReflectionCard({
     setSaveError("")
 
     try {
-      await onSave(mood, notes)
+      await onSave(mood, energy, notes)
 
       setStatus("saved")
     } catch (reason) {
@@ -303,6 +322,21 @@ function ReflectionCard({
           </button>
         ))}
       </div>
+      <label className="reflection-energy">
+        Energy today
+        <select
+          value={energy}
+          onChange={(event) => {
+            setEnergy(event.target.value)
+            setStatus("idle")
+          }}
+        >
+          <option value="">Not specified</option>
+          <option value="low">Low</option>
+          <option value="steady">Steady</option>
+          <option value="high">High</option>
+        </select>
+      </label>
       <textarea
         value={notes}
         onChange={(e) => {
