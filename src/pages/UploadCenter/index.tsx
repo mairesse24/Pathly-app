@@ -48,6 +48,10 @@ const stageLabels: Record<ProcessingStage, string> = {
   creating: "Creating study materials…",
   saving: "Saving your results…",
 }
+function processingStageLabel(stage: ProcessingStage, category: UploadCategory) {
+  if ((category === "degree_audit" || category === "unofficial_transcript") && stage === "creating") return "Identifying coursework…"
+  return stageLabels[stage]
+}
 
 export function UploadCenterPage() {
   const { profile } = useProfile()
@@ -209,7 +213,9 @@ export function UploadCenterPage() {
       setMessage(
         row.category === "syllabus"
           ? "Your syllabus is ready to review."
-          : "Your study materials are ready.",
+          : row.category === "lecture"
+            ? "Your study materials are ready."
+            : "Your candidate coursework is ready to review.",
       )
     } catch {
       setFiles((current) =>
@@ -335,8 +341,9 @@ export function UploadCenterPage() {
           {sensitive && (
             <p className="privacy-notice">
               <strong>Sensitive academic record.</strong> Only you can access
-              this source file. Degree audits and transcripts are not processed
-              in this milestone.
+              this source file. Before uploading, remove information you don&apos;t
+              want Pathly to process, including Social Security numbers,
+              financial information, and addresses.
             </p>
           )}
           <Button onClick={upload} disabled={!file || state === "uploading"}>
@@ -367,8 +374,7 @@ export function UploadCenterPage() {
             {files.map((row) => {
               const result = results.find((item) => item.upload_id === row.id)
 
-              const processable =
-                row.category === "syllabus" || row.category === "lecture"
+              const processable = true
 
               const isProcessing =
                 processingId === row.id ||
@@ -379,12 +385,16 @@ export function UploadCenterPage() {
                   ? "Try again"
                   : row.category === "syllabus"
                     ? "Review syllabus"
-                    : "Create study materials"
+                    : row.category === "lecture"
+                      ? "Create study materials"
+                      : "Review academic record"
 
               const supportingCopy =
                 row.category === "syllabus"
                   ? "Pathly can identify important dates, assignments, exams, and course information for you to review."
-                  : "Pathly can turn this material into a summary, key concepts, flashcards, and practice questions."
+                  : row.category === "lecture"
+                    ? "Pathly can turn this material into a summary, key concepts, flashcards, and practice questions."
+                    : "Pathly can identify candidate coursework for you to review. Nothing is added until you confirm it."
 
               return (
                 <div key={row.id} className="upload-with-review">
@@ -400,7 +410,7 @@ export function UploadCenterPage() {
                       </p>
                       {isProcessing && (
                         <p className="upload-status" role="status">
-                          {stageLabels[row.processing_stage ?? "preparing"]}
+                          {processingStageLabel(row.processing_stage ?? "preparing", row.category)}
                         </p>
                       )}
                       {row.processing_status === "processing_failed" && (
@@ -420,7 +430,7 @@ export function UploadCenterPage() {
                           disabled={isProcessing}
                         >
                           {isProcessing
-                            ? stageLabels[row.processing_stage ?? "preparing"]
+                            ? processingStageLabel(row.processing_stage ?? "preparing", row.category)
                             : actionLabel}
                         </Button>
                       )}
@@ -435,7 +445,13 @@ export function UploadCenterPage() {
                   {result && (
                     <ProcessingReview
                       record={result}
-                      onApproved={(approved) => {
+                      onApproved={(approved, sourceDeleted) => {
+                        if (sourceDeleted) {
+                          setResults((current) => current.filter((item) => item.id !== approved.id))
+                          setFiles((current) => current.filter((item) => item.id !== row.id))
+                          setMessage("Courses confirmed and the original document was deleted.")
+                          return
+                        }
                         setResults((current) =>
                           current.map((item) =>
                             item.id === approved.id ? approved : item,

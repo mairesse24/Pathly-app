@@ -1,10 +1,22 @@
 import { supabase } from "../lib/supabase"
-import type { ProcessingResultRecord, ProcessingStage, SyllabusResult } from "../types/uploads"
+import type { AcademicRecordCourse, ProcessingResultRecord, ProcessingStage, SyllabusResult } from "../types/uploads"
+import { deleteUpload } from "./uploads"
 
 export async function listProcessingResults() {
   const { data, error } = await supabase.from("ai_processing_results").select("*").order("created_at", { ascending: false })
   if (error) throw error
   return data as ProcessingResultRecord[]
+}
+
+export async function confirmAcademicRecord(processing: ProcessingResultRecord, courses: AcademicRecordCourse[], deleteOriginal: boolean) {
+  const { error } = await supabase.rpc("confirm_academic_record_processing", { p_processing_id: processing.id, p_courses: courses })
+  if (error) throw error
+  if (deleteOriginal) {
+    const { data: upload, error: uploadError } = await supabase.from("uploaded_files").select("*").eq("id", processing.upload_id).single()
+    if (uploadError) throw uploadError
+    await deleteUpload(upload)
+  }
+  return { ...processing, status: "approved", approved_at: new Date().toISOString() } as ProcessingResultRecord
 }
 
 export async function processUpload(uploadId: string, onStage?: (stage: ProcessingStage) => void) {

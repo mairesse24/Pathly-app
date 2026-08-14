@@ -35,16 +35,26 @@ export type LectureResult = {
   practice_questions: string[]
   topics_worth_reviewing: string[]
 }
+export type AcademicRecordCourse = {
+  course_code: string
+  course_title: string
+  credit_hours: number
+  term: "Spring" | "Summer" | "Fall" | "Winter" | null
+  year: number | null
+  status: "completed" | "in_progress"
+  requirement_label: string | null
+}
+export type AcademicRecordResult = { courses: AcademicRecordCourse[] }
 export type ProcessingStage = "preparing" | "reading" | "creating" | "saving"
 export type ProcessingResultRecord = {
   id: string
   user_id: string
   upload_id: string
-  course_id: string
-  kind: "syllabus" | "lecture"
+  course_id: string | null
+  kind: "syllabus" | "lecture" | "degree_audit" | "unofficial_transcript"
   status: "ready_for_review" | "approved"
   model: string
-  result: SyllabusResult | LectureResult
+  result: SyllabusResult | LectureResult | AcademicRecordResult
   approved_at: string | null
   created_at: string
   updated_at: string

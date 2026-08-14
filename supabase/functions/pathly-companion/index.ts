@@ -159,6 +159,8 @@ Deno.serve(async (req: Request) => {
       )
     const wantsSyllabus =
       /syllabus|deadline|requirement|course info|grading/.test(lower)
+    const wantsDegree =
+      /degree|graduat|requirement.*left|credits.*completed|academic progress/.test(lower)
     const sources: Source[] = []
     const context: string[] = []
     const add = (label: string, type: SourceType, value: unknown) => {
@@ -174,7 +176,7 @@ Deno.serve(async (req: Request) => {
     const courseById = new Map(
       (courses || []).map((course: any) => [course.id, course]),
     )
-    const { data: profile } = await admin.from("profiles").select("timezone,preferred_study_time,focus_session_minutes,prefers_breaks,break_duration_minutes").eq("id", user.id).maybeSingle()
+    const { data: profile } = await admin.from("profiles").select("timezone,preferred_study_time,focus_session_minutes,prefers_breaks,break_duration_minutes,university,major,catalog_year,expected_graduation_term,graduation_year").eq("id", user.id).maybeSingle()
     const timeZone = validTimeZone(profile?.timezone || requestedTimeZone)
     const localToday = localDateKey(new Date(), timeZone)
 
@@ -228,6 +230,31 @@ Deno.serve(async (req: Request) => {
         now,
       })
       add("Today's focus", "assignment", plan)
+    }
+    if (wantsDegree) {
+      const { data: completed = [] } = await admin.from("completed_courses")
+        .select("course_code,course_title,credit_hours,status").eq("user_id", user.id)
+      const { data: program } = profile?.university && profile?.major && profile?.catalog_year
+        ? await admin.from("degree_programs").select("id,university,degree,major,catalog_year,total_credits_required,source_title")
+          .ilike("university", profile.university).ilike("major", profile.major).eq("catalog_year", profile.catalog_year).maybeSingle()
+        : { data: null }
+      if (!program) {
+        add("Degree Planner", "course", { supported: false, university: profile?.university || null, major: profile?.major || null, catalog_year: profile?.catalog_year || null, message: "Pathly does not have verified requirements for this exact program and catalog year." })
+      } else {
+        const { data: groups = [] } = await admin.from("requirement_groups").select("id,name,requirement_type,minimum_credits").eq("program_id", program.id).order("sort_order")
+        const groupIds = (groups || []).map((group: any) => group.id)
+        const { data: options = [] } = groupIds.length ? await admin.from("requirement_course_options").select("group_id,course_code,credit_hours").in("group_id", groupIds) : { data: [] }
+        const unique = new Map<string, any>(); for (const course of completed || []) unique.set(course.course_code.trim().toUpperCase().replace(/\s+/g, " "), course)
+        const confirmed = [...unique.values()].filter((course: any) => course.status === "completed")
+        const completedCredits = confirmed.reduce((sum: number, course: any) => sum + Number(course.credit_hours), 0)
+        const codes = new Set(confirmed.map((course: any) => course.course_code.trim().toUpperCase().replace(/\s+/g, " ")))
+        const requirementProgress = (groups || []).map((group: any) => {
+          const groupOptions = (options || []).filter((option: any) => option.group_id === group.id)
+          const matched = groupOptions.filter((option: any) => codes.has(option.course_code))
+          return { name: group.name, completed_credits: group.requirement_type === "total_degree" ? Math.min(completedCredits, Number(group.minimum_credits)) : Math.min(Number(group.minimum_credits), matched.reduce((sum: number, option: any) => sum + Number(option.credit_hours), 0)), required_credits: Number(group.minimum_credits), remaining_courses: group.requirement_type === "all_courses" ? groupOptions.filter((option: any) => !codes.has(option.course_code)).map((option: any) => option.course_code) : [] }
+        })
+        add("Degree Planner", "course", { supported: true, program, completed_credits: completedCredits, in_progress_credits: [...unique.values()].filter((course: any) => course.status === "in_progress").reduce((sum: number, course: any) => sum + Number(course.credit_hours), 0), percent_complete: Math.min(100, Math.round(completedCredits / Number(program.total_credits_required) * 100)), requirement_progress: requirementProgress })
+      }
     }
     const { data: history = [], error: historyError } = await admin
       .from("companion_messages")
@@ -328,6 +355,7 @@ Handle retrieved materials in exactly one of these ways:
 
 If a lecture or syllabus source appears in AVAILABLE SOURCES, you found a retrieved document. Never say you do not have lecture notes, slides, or a source in that case. Check supplied material for filename/content mismatches, conflicting statements, dates, units, or arithmetic and put concise concerns in things_to_double_check. Cite only exact labels from AVAILABLE SOURCES. Do not mention AI providers or internal implementation. Do not use outside knowledge unless the student explicitly requests it.
 When Today's focus appears in AVAILABLE SOURCES, its deterministic priorities are authoritative. Preserve their order and recommend only those items; explain them conversationally without inventing or reprioritizing work. Treat overdue work as unresolved and ask whether it was submitted—never call it failed or missed. Mention schedule conflicts without moving anything automatically.
+When Degree Planner appears in AVAILABLE SOURCES, its structured calculations are authoritative. Report only those values. If supported is false, say verified requirements are unavailable; never calculate or infer degree progress yourself. Never treat Canvas enrollments as completed coursework.
 AVAILABLE SOURCES: ${JSON.stringify(allowedLabels)}
 PATHLY CONTEXT:
 ${context.join("\n").slice(0, 24000)}`
