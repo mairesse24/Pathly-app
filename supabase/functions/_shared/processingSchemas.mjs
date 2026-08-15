@@ -33,3 +33,26 @@ export const academicRecordSchema = {
   }, required: ["course_code", "course_title", "credit_hours", "status", "term", "year", "requirement_label"] } } },
   required: ["courses"],
 }
+
+export const degreeAuditSchema = {
+  type: "object", additionalProperties: false,
+  properties: {
+    university: { anyOf: [{ type: "string" }, { type: "null" }] },
+    major: { anyOf: [{ type: "string" }, { type: "null" }] },
+    catalog_year: { anyOf: [{ type: "integer" }, { type: "null" }] },
+    total_credits_required: { anyOf: [{ type: "number" }, { type: "null" }] },
+    total_credits_completed: { anyOf: [{ type: "number" }, { type: "null" }] },
+    courses: academicRecordSchema.properties.courses,
+    requirements: { type: "array", items: { type: "object", additionalProperties: false, properties: {
+      requirement_label: { type: "string" },
+      status: { type: "string", enum: ["satisfied", "incomplete", "in_progress", "unclear"] },
+      credits_required: { anyOf: [{ type: "number" }, { type: "null" }] },
+      credits_completed: { anyOf: [{ type: "number" }, { type: "null" }] },
+      credits_remaining: { anyOf: [{ type: "number" }, { type: "null" }] },
+      required_course_codes: { type: "array", items: { type: "string" } },
+      choice_requirement_text: { anyOf: [{ type: "string" }, { type: "null" }] },
+      details: { anyOf: [{ type: "string" }, { type: "null" }] },
+    }, required: ["requirement_label", "status", "credits_required", "credits_completed", "credits_remaining", "required_course_codes", "choice_requirement_text", "details"] } },
+  },
+  required: ["university", "major", "catalog_year", "total_credits_required", "total_credits_completed", "courses", "requirements"],
+}

@@ -45,6 +45,24 @@ export type AcademicRecordCourse = {
   requirement_label: string | null
 }
 export type AcademicRecordResult = { courses: AcademicRecordCourse[] }
+export type DegreeAuditRequirement = {
+  requirement_label: string
+  status: "satisfied" | "incomplete" | "in_progress" | "unclear"
+  credits_required: number | null
+  credits_completed: number | null
+  credits_remaining: number | null
+  required_course_codes: string[]
+  choice_requirement_text: string | null
+  details: string | null
+}
+export type DegreeAuditResult = AcademicRecordResult & {
+  university: string | null
+  major: string | null
+  catalog_year: number | null
+  total_credits_required: number | null
+  total_credits_completed: number | null
+  requirements: DegreeAuditRequirement[]
+}
 export type ProcessingStage = "preparing" | "reading" | "creating" | "saving"
 export type ProcessingResultRecord = {
   id: string
@@ -54,7 +72,7 @@ export type ProcessingResultRecord = {
   kind: "syllabus" | "lecture" | "degree_audit" | "unofficial_transcript"
   status: "ready_for_review" | "approved"
   model: string
-  result: SyllabusResult | LectureResult | AcademicRecordResult
+  result: SyllabusResult | LectureResult | AcademicRecordResult | DegreeAuditResult
   approved_at: string | null
   created_at: string
   updated_at: string

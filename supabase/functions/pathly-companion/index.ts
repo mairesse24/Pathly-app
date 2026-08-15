@@ -234,6 +234,10 @@ Deno.serve(async (req: Request) => {
     if (wantsDegree) {
       const { data: completed = [] } = await admin.from("completed_courses")
         .select("course_code,course_title,credit_hours,status").eq("user_id", user.id)
+      const { data: auditPlan, error: auditPlanError } = await admin.from("user_degree_plans")
+        .select("id,university,major,catalog_year,total_credits_required,total_credits_completed,confirmed_at,user_degree_requirement_groups(requirement_label,status,credits_required,credits_completed,credits_remaining,details,user_degree_requirements(requirement_type,course_code,requirement_text,status))")
+        .eq("user_id",user.id).eq("status","active").maybeSingle()
+      if (auditPlanError) throw auditPlanError
       const { data: programMatch, error: programMatchError } = await admin.rpc("match_degree_program", {
         p_university: profile?.university || null,
         p_major: profile?.major || null,
@@ -241,8 +245,10 @@ Deno.serve(async (req: Request) => {
       })
       if (programMatchError) throw programMatchError
       const program = programMatch?.program
-      if (programMatch?.status !== "matched" || !program) {
-        add("Degree Planner", "course", { supported: false, ...programMatch })
+      if ((programMatch?.status !== "matched" || !program) && auditPlan) {
+        add("Degree Planner", "course", { supported: true, requirement_source: "degree_audit", provenance_label: "Based on your degree audit", confirmed_at: auditPlan.confirmed_at, university: auditPlan.university, major: auditPlan.major, catalog_year: auditPlan.catalog_year, completed_credits_shown_by_audit: auditPlan.total_credits_completed, total_credits_required_shown_by_audit: auditPlan.total_credits_required, requirement_progress: auditPlan.user_degree_requirement_groups, message: "Use only the requirements from the degree audit the student reviewed. Do not extrapolate beyond it." })
+      } else if (programMatch?.status !== "matched" || !program) {
+        add("Degree Planner", "course", { supported: false, requirement_source: null, ...programMatch, message: "I don't have enough verified or student-confirmed degree information yet. Upload a degree audit and review the extracted requirements first." })
       } else {
         const { data: groups = [] } = await admin.from("requirement_groups").select("id,name,description,requirement_type,minimum_credits,matching_strategy").eq("program_id", program.id).order("sort_order")
         const groupIds = (groups || []).map((group: any) => group.id)
@@ -263,7 +269,7 @@ Deno.serve(async (req: Request) => {
           const matchedCredits = matched.reduce((sum: number, option: any) => sum + Number(option.credit_hours), 0)
           return { name: group.name, description: group.description, completed_credits: Math.min(Number(group.minimum_credits), matchedCredits), required_credits: Number(group.minimum_credits), remaining_credits: Math.max(0, Number(group.minimum_credits) - matchedCredits), remaining_courses: groupOptions.filter((option: any) => !confirmed.some((course: any) => matchesOption(course.course_code, option.course_code))).map((option: any) => ({ course_code: option.course_code, course_title: option.course_title, prerequisite: option.prerequisite_text })), satisfied_courses: matched.map((option: any) => confirmed.find((course: any) => matchesOption(course.course_code, option.course_code))?.course_code || option.course_code), requires_degree_audit_review: false }
         })
-        add("Degree Planner", "course", { supported: true, program, catalog_label: `${program.catalog_year}–${program.catalog_year + 1}`, completed_credits: completedCredits, in_progress_courses: [...unique.values()].filter((course: any) => course.status === "in_progress"), in_progress_credits: [...unique.values()].filter((course: any) => course.status === "in_progress").reduce((sum: number, course: any) => sum + Number(course.credit_hours), 0), percent_complete: Math.min(100, Math.round(completedCredits / Number(program.total_credits_required) * 100)), target_graduation_term: [profile?.expected_graduation_term, profile?.graduation_year].filter(Boolean).join(" ") || null, requirement_progress: requirementProgress })
+        add("Degree Planner", "course", { supported: true, requirement_source: "verified_catalog", provenance_label: "Verified program requirements", program, catalog_label: `${program.catalog_year}–${program.catalog_year + 1}`, completed_credits: completedCredits, in_progress_courses: [...unique.values()].filter((course: any) => course.status === "in_progress"), in_progress_credits: [...unique.values()].filter((course: any) => course.status === "in_progress").reduce((sum: number, course: any) => sum + Number(course.credit_hours), 0), percent_complete: Math.min(100, Math.round(completedCredits / Number(program.total_credits_required) * 100)), target_graduation_term: [profile?.expected_graduation_term, profile?.graduation_year].filter(Boolean).join(" ") || null, requirement_progress: requirementProgress, degree_audit_supplement: auditPlan ? { confirmed_at: auditPlan.confirmed_at, requirement_progress: auditPlan.user_degree_requirement_groups, warning: "The verified catalog remains the baseline. If the audit differs, identify it under things_to_double_check; do not merge or resolve the conflict silently." } : null })
       }
     }
     const { data: history = [], error: historyError } = await admin
@@ -365,7 +371,7 @@ Handle retrieved materials in exactly one of these ways:
 
 If a lecture or syllabus source appears in AVAILABLE SOURCES, you found a retrieved document. Never say you do not have lecture notes, slides, or a source in that case. Check supplied material for filename/content mismatches, conflicting statements, dates, units, or arithmetic and put concise concerns in things_to_double_check. Cite only exact labels from AVAILABLE SOURCES. Do not mention AI providers or internal implementation. Do not use outside knowledge unless the student explicitly requests it.
 When Today's focus appears in AVAILABLE SOURCES, its deterministic priorities are authoritative. Preserve their order and recommend only those items; explain them conversationally without inventing or reprioritizing work. Treat overdue work as unresolved and ask whether it was submitted—never call it failed or missed. Mention schedule conflicts without moving anything automatically.
-When Degree Planner appears in AVAILABLE SOURCES, its structured calculations are authoritative. Report only those values. If supported is false, use its exact message to explain whether academic details are missing, the program is recognized but the catalog year is missing or unsupported, or no verified program is available. Suggest Academic Details when a profile field needs attention. Never calculate or infer degree progress yourself. Never treat Canvas enrollments as completed coursework.
+When Degree Planner appears in AVAILABLE SOURCES, its structured calculations and provenance are authoritative. Report only those values. Say "Based on your degree audit" when requirement_source is degree_audit, and never describe that source as Pathly verified. Say verified requirements only when requirement_source is verified_catalog. If supported is false, use its exact message and suggest uploading a degree audit. Never calculate or infer degree progress yourself. Never treat Canvas enrollments as completed coursework. If degree_audit_supplement differs from the verified baseline, preserve the verified baseline and put the discrepancy in things_to_double_check rather than silently resolving it.
 For degree questions, distinguish satisfied requirements, remaining required courses, unresolved choice or elective groups, remaining total credits, and in-progress courses. Groups marked requires_degree_audit_review remain unresolved; do not independently decide that a course satisfies them. If the student names a graduation term, call it their target graduation term and never say they are on track or will graduate by then. Do not create a semester-by-semester path unless the supplied prerequisite and course-offering data is sufficient; explain the limitation instead.
 AVAILABLE SOURCES: ${JSON.stringify(allowedLabels)}
 PATHLY CONTEXT:

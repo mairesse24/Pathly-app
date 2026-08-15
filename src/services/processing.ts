@@ -1,5 +1,5 @@
 import { supabase } from "../lib/supabase"
-import type { AcademicRecordCourse, ProcessingResultRecord, ProcessingStage, SyllabusResult } from "../types/uploads"
+import type { AcademicRecordCourse, DegreeAuditRequirement, DegreeAuditResult, ProcessingResultRecord, ProcessingStage, SyllabusResult } from "../types/uploads"
 import { deleteUpload } from "./uploads"
 
 export async function listProcessingResults() {
@@ -10,6 +10,22 @@ export async function listProcessingResults() {
 
 export async function confirmAcademicRecord(processing: ProcessingResultRecord, courses: AcademicRecordCourse[], deleteOriginal: boolean) {
   const { error } = await supabase.rpc("confirm_academic_record_processing", { p_processing_id: processing.id, p_courses: courses })
+  if (error) throw error
+  if (deleteOriginal) {
+    const { data: upload, error: uploadError } = await supabase.from("uploaded_files").select("*").eq("id", processing.upload_id).single()
+    if (uploadError) throw uploadError
+    await deleteUpload(upload)
+  }
+  return { ...processing, status: "approved", approved_at: new Date().toISOString() } as ProcessingResultRecord
+}
+
+export async function confirmDegreeAudit(processing: ProcessingResultRecord, result: DegreeAuditResult, courses: AcademicRecordCourse[], requirements: DegreeAuditRequirement[], deleteOriginal: boolean) {
+  const { error } = await supabase.rpc("confirm_degree_audit_processing", {
+    p_processing_id: processing.id,
+    p_courses: courses,
+    p_requirements: requirements.map((item,index)=>({...item,sort_order:index})),
+    p_plan_metadata: { university: result.university, major: result.major, catalog_year: result.catalog_year, total_credits_required: result.total_credits_required, total_credits_completed: result.total_credits_completed },
+  })
   if (error) throw error
   if (deleteOriginal) {
     const { data: upload, error: uploadError } = await supabase.from("uploaded_files").select("*").eq("id", processing.upload_id).single()

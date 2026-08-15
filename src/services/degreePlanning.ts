@@ -1,5 +1,5 @@
 import { supabase } from "../lib/supabase"
-import type { CompletedCourse, DegreeProgram, DegreeProgramMatch, RequirementGroup } from "../types/degreePlanning"
+import type { CompletedCourse, DegreeProgram, DegreeProgramMatch, RequirementGroup, UserDegreePlan } from "../types/degreePlanning"
 
 export type CourseInput = Pick<CompletedCourse, "course_code" | "course_title" | "credit_hours" | "term" | "year" | "status">
 const normalize = (value: string) => value.trim().toUpperCase().replace(/\s+/g, " ")
@@ -42,6 +42,11 @@ export async function getRequirementGroups(programId: string) {
     .select("*,requirement_course_options(*)").eq("program_id", programId).order("sort_order")
   if (error) throw error
   return data as RequirementGroup[]
+}
+export async function getActiveUserDegreePlan() {
+  const { data,error } = await supabase.from("user_degree_plans").select("*,user_degree_requirement_groups(*,user_degree_requirements(*))").eq("status","active").order("sort_order",{referencedTable:"user_degree_requirement_groups"}).maybeSingle()
+  if(error) throw error
+  return data as UserDegreePlan|null
 }
 export function calculateDegreeProgress(program: DegreeProgram, groups: RequirementGroup[], courses: CompletedCourse[]) {
   const unique = new Map<string, CompletedCourse>()
