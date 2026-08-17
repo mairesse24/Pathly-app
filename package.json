@@ -6,9 +6,6 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
-    "test:degree-planning": "node --experimental-strip-types --test src/utils/degreeProgress.test.ts",
-    "test:processing-schemas": "node scripts/validate-processing-schemas.mjs",
-    "test:degree-audit-isolation": "node scripts/validate-degree-audit-isolation.mjs",
     "preview": "vite preview",
     "format": "oxfmt"
   },

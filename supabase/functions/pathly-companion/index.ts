@@ -235,7 +235,7 @@ Deno.serve(async (req: Request) => {
       const { data: completed = [] } = await admin.from("completed_courses")
         .select("course_code,course_title,credit_hours,status").eq("user_id", user.id)
       const { data: auditPlan, error: auditPlanError } = await admin.from("user_degree_plans")
-        .select("id,university,major,catalog_year,total_credits_required,total_credits_completed,confirmed_at,user_degree_requirement_groups(requirement_label,status,credits_required,credits_completed,credits_remaining,details,user_degree_requirements(requirement_type,course_code,requirement_text,status,credits_applied,application_source))")
+        .select("id,university,major,catalog_year,total_credits_required,total_credits_completed,confirmed_at,user_degree_requirement_groups(requirement_label,status,credits_required,credits_completed,credits_remaining,details,user_degree_requirements(requirement_type,course_code,requirement_text,status))")
         .eq("user_id",user.id).eq("status","active").maybeSingle()
       if (auditPlanError) throw auditPlanError
       const { data: programMatch, error: programMatchError } = await admin.rpc("match_degree_program", {
@@ -263,24 +263,7 @@ Deno.serve(async (req: Request) => {
         }
         const requirementProgress = (groups || []).map((group: any) => {
           const groupOptions = (options || []).filter((option: any) => option.group_id === group.id)
-          if (group.matching_strategy === "degree_audit_review") {
-            const auditGroup = auditPlan?.user_degree_requirement_groups?.find((item: any) => normalized(item.requirement_label) === normalized(group.name))
-            const applications = auditGroup?.user_degree_requirements?.filter((item: any) => item.application_source === "degree_audit" && item.course_code && Number(item.credits_applied) > 0) || []
-            const seen = new Set<string>(), satisfiedCourses: any[] = [], inProgressCourses: any[] = [], needsReview: string[] = []
-            let appliedCompleted = 0, appliedInProgress = 0
-            for (const application of applications) {
-              const code = normalized(application.course_code)
-              if (seen.has(code)) continue
-              seen.add(code)
-              const course = unique.get(code), credits = Number(application.credits_applied)
-              if (!course || credits > Number(course.credit_hours)) { needsReview.push(application.course_code); continue }
-              const applied = { course_code: application.course_code, credits_applied: credits, provenance: "degree_audit" }
-              if (course.status === "completed") { appliedCompleted += credits; satisfiedCourses.push(applied) }
-              else { appliedInProgress += credits; inProgressCourses.push(applied) }
-            }
-            const required = Number(group.minimum_credits), completedApplied = Math.min(required, appliedCompleted), progressApplied = Math.min(appliedInProgress, Math.max(0, required-appliedCompleted))
-            return { name: group.name, description: group.description, completed_credits: completedApplied, in_progress_credits: progressApplied, required_credits: required, remaining_credits: Math.max(0, required-completedApplied), unresolved_credits: Math.max(0, required-completedApplied-progressApplied), remaining_courses: [], satisfied_courses: satisfiedCourses, in_progress_courses: inProgressCourses, needs_review: needsReview, requires_degree_audit_review: !auditGroup || !applications.length || needsReview.length>0 || completedApplied+progressApplied<required, provenance: applications.length ? "degree_audit" : null }
-          }
+          if (group.matching_strategy === "degree_audit_review") return { name: group.name, description: group.description, completed_credits: 0, required_credits: Number(group.minimum_credits), remaining_credits: Number(group.minimum_credits), remaining_courses: [], satisfied_courses: [], requires_degree_audit_review: true }
           if (group.matching_strategy === "degree_total" || group.requirement_type === "total_degree") return { name: group.name, description: group.description, completed_credits: Math.min(completedCredits, Number(group.minimum_credits)), required_credits: Number(group.minimum_credits), remaining_credits: Math.max(0, Number(group.minimum_credits) - completedCredits), remaining_courses: [], satisfied_courses: [], requires_degree_audit_review: false }
           const matched = groupOptions.filter((option: any) => confirmed.some((course: any) => matchesOption(course.course_code, option.course_code)))
           const matchedCredits = matched.reduce((sum: number, option: any) => sum + Number(option.credit_hours), 0)
@@ -390,7 +373,6 @@ If a lecture or syllabus source appears in AVAILABLE SOURCES, you found a retrie
 When Today's focus appears in AVAILABLE SOURCES, its deterministic priorities are authoritative. Preserve their order and recommend only those items; explain them conversationally without inventing or reprioritizing work. Treat overdue work as unresolved and ask whether it was submitted—never call it failed or missed. Mention schedule conflicts without moving anything automatically.
 When Degree Planner appears in AVAILABLE SOURCES, its structured calculations and provenance are authoritative. Report only those values. Say "Based on your degree audit" when requirement_source is degree_audit, and never describe that source as Pathly verified. Say verified requirements only when requirement_source is verified_catalog. If supported is false, use its exact message and suggest uploading a degree audit. Never calculate or infer degree progress yourself. Never treat Canvas enrollments as completed coursework. If degree_audit_supplement differs from the verified baseline, preserve the verified baseline and put the discrepancy in things_to_double_check rather than silently resolving it.
 For degree questions, distinguish satisfied requirements, remaining required courses, unresolved choice or elective groups, remaining total credits, and in-progress courses. Groups marked requires_degree_audit_review remain unresolved; do not independently decide that a course satisfies them. If the student names a graduation term, call it their target graduation term and never say they are on track or will graduate by then. Do not create a semester-by-semester path unless the supplied prerequisite and course-offering data is sufficient; explain the limitation instead.
-For a choice group, report only satisfied_courses entries produced by the deterministic calculator. Describe provenance=degree_audit as "According to the degree audit you reviewed." If a completed course is not in satisfied_courses, say Pathly can see the completion but lacks enough confirmed information to say it satisfies that requirement. Never promote an eligible, unmapped, or merely similar course into a requirement.
 AVAILABLE SOURCES: ${JSON.stringify(allowedLabels)}
 PATHLY CONTEXT:
 ${context.join("\n").slice(0, 24000)}`

@@ -54,10 +54,6 @@ export type DegreeAuditRequirement = {
   credits_completed: number | null
   credits_remaining: number | null
   required_course_codes: string[]
-  applied_courses: Array<{
-    course_code: string
-    credits_applied: number
-  }>
   choice_requirement_text: string | null
   details: string | null
 }

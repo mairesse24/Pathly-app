@@ -52,12 +52,9 @@ export const degreeAuditSchema = {
       credits_completed: { anyOf: [{ type: "number" }, { type: "null" }] },
       credits_remaining: { anyOf: [{ type: "number" }, { type: "null" }] },
       required_course_codes: { type: "array", items: { type: "string" } },
-      applied_courses: { type: "array", items: { type: "object", additionalProperties: false, properties: {
-        course_code: { type: "string" }, credits_applied: { type: "number" },
-      }, required: ["course_code", "credits_applied"] } },
       choice_requirement_text: { anyOf: [{ type: "string" }, { type: "null" }] },
       details: { anyOf: [{ type: "string" }, { type: "null" }] },
-    }, required: ["requirement_label", "status", "credits_required", "credits_completed", "credits_remaining", "required_course_codes", "applied_courses", "choice_requirement_text", "details"] } },
+    }, required: ["requirement_label", "status", "credits_required", "credits_completed", "credits_remaining", "required_course_codes", "choice_requirement_text", "details"] } },
   },
   required: ["university", "major", "catalog_year", "total_credits_required", "total_credits_completed", "courses", "requirements"],
 }
