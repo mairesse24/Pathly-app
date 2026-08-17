@@ -57,7 +57,7 @@ export function DegreePlannerPage() {
   }
 
   useEffect(() => { void load() }, [profileLoading, profile?.university, profile?.major, profile?.catalog_year])
-  const progress = useMemo(() => program ? calculateDegreeProgress(program, groups, courses) : null, [program, groups, courses])
+  const progress = useMemo(() => program ? calculateDegreeProgress(program, groups, courses, auditPlan) : null, [program, groups, courses, auditPlan])
 
   async function save(event: FormEvent) {
     event.preventDefault()

@@ -1,4 +1,4 @@
-import { academicRecordSchema, lectureSchema, syllabusSchema } from "../supabase/functions/_shared/processingSchemas.mjs"
+import { academicRecordSchema, degreeAuditSchema, lectureSchema, syllabusSchema } from "../supabase/functions/_shared/processingSchemas.mjs"
 
 function isType(value, type) {
   if (type === "null") return value === null
@@ -23,8 +23,9 @@ function validate(schema, value, path = "$") {
   if (schema.type === "array") value.forEach((item, index) => validate(schema.items, item, `${path}[${index}]`))
 }
 
-validate(syllabusSchema, { course_summary: "Course", assignments: [{ title: "Work", description: null, due_at: null, estimated_minutes: null }], exams: [] })
+validate(syllabusSchema, { course_code: null, course_title: null, course_summary: "Course", assignments: [{ title: "Work", description: null, due_at: null, estimated_minutes: null }], exams: [] })
 validate(lectureSchema, { title: "Lecture", summary: "Summary", key_concepts: [], flashcards: [], practice_questions: [], topics_worth_reviewing: [] })
 for (const term of ["Spring", "Summer", "Fall", "Winter", null]) validate(academicRecordSchema, { courses: [{ course_code: "CSCE 2100", course_title: "Foundations", credit_hours: 3, status: "completed", term, year: null, requirement_label: null }] })
 validate(academicRecordSchema, { courses: [{ course_code: "CSCE 2110", course_title: "Data Structures", credit_hours: 3, status: "in_progress", term: null, year: 2026, requirement_label: "CS core" }] })
+validate(degreeAuditSchema, { university: "University", major: "Computer Science", catalog_year: 2025, total_credits_required: 120, total_credits_completed: 88, courses: [], requirements: [{ requirement_label: "CSCE Breadth Choices", status: "in_progress", credits_required: 6, credits_completed: 3, credits_remaining: 3, required_course_codes: [], applied_courses: [{ course_code: "CSCE 4000", credits_applied: 3 }], choice_requirement_text: "Breadth choice", details: null }] })
 console.log("syllabus, lecture, transcript, and degree-audit schemas passed")

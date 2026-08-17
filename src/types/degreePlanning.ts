@@ -27,6 +27,6 @@ export type RequirementGroup = {
   matching_strategy: "course_options" | "degree_total" | "degree_audit_review"
   minimum_credits: number; sort_order: number; requirement_course_options: RequirementOption[]
 }
-export type UserDegreeRequirement = { id:string; requirement_type:"course"|"choice"|"other"; course_code:string|null; requirement_text:string; status:"satisfied"|"incomplete"|"in_progress"|"unclear" }
+export type UserDegreeRequirement = { id:string; requirement_type:"course"|"choice"|"other"; course_code:string|null; requirement_text:string; status:"satisfied"|"incomplete"|"in_progress"|"unclear"; credits_applied:number|null; application_source:"degree_audit"|null }
 export type UserDegreeRequirementGroup = { id:string; requirement_label:string; status:"satisfied"|"incomplete"|"in_progress"|"unclear"; credits_required:number|null; credits_completed:number|null; credits_remaining:number|null; details:string|null; sort_order:number; user_degree_requirements:UserDegreeRequirement[] }
 export type UserDegreePlan = { id:string; source_upload_id:string|null; university:string|null; major:string|null; catalog_year:number|null; total_credits_required:number|null; total_credits_completed:number|null; requirement_source:"degree_audit"; status:"active"|"replaced"; confirmed_at:string; user_degree_requirement_groups:UserDegreeRequirementGroup[] }
