@@ -23,6 +23,10 @@ import * as sessionService from "../services/studySessions"
 import * as reflectionService from "../services/reflections"
 import { useProfile } from "./ProfileContext"
 import { todayKey } from "../utils/dateTime"
+import {
+  activeCourseIds,
+  filterActiveCourseItems,
+} from "../utils/activePlanning"
 import type {
   AssignmentRecord,
   CourseRecord,
@@ -135,12 +139,12 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
 
       setCourses(c)
 
-      const activeCourseIds = new Set(c.map((course) => course.id))
-      setAssignments(a.filter((assignment) => activeCourseIds.has(assignment.course_id)))
+      const currentCourseIds = activeCourseIds(c)
+      setAssignments(filterActiveCourseItems(a, currentCourseIds))
 
-      setExams(e.filter((exam) => activeCourseIds.has(exam.course_id)))
+      setExams(filterActiveCourseItems(e, currentCourseIds))
 
-      setStudySessions(ss.filter((session) => !session.course_id || activeCourseIds.has(session.course_id)))
+      setStudySessions(filterActiveCourseItems(ss, currentCourseIds, true))
 
       setReflection(r)
     } catch (e) {

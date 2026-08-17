@@ -1,5 +1,9 @@
 import "jsr:@supabase/functions-js@2.5.0/edge-runtime.d.ts"
 import { createClient } from "@supabase/supabase-js"
+import {
+  activeCourseIds,
+  filterActiveCourseItems,
+} from "../_shared/activePlanning.ts"
 import { buildSmartPlan } from "../_shared/smartPlanning.ts"
 
 const headers = {
@@ -170,9 +174,12 @@ Deno.serve(async (req: Request) => {
     const { data: courses = [] } = await admin
       .from("courses")
       .select(
-        "id,course_code,course_name,instructor,meeting_days,meeting_start,meeting_end",
+        "id,course_code,course_name,instructor,meeting_days,meeting_start,meeting_end,is_active",
       )
       .eq("user_id", user.id)
+      .eq("is_active", true)
+    const currentCourseIds = activeCourseIds(courses || [])
+    const currentCourseIdList = [...currentCourseIds]
     const courseById = new Map(
       (courses || []).map((course: any) => [course.id, course]),
     )
@@ -183,35 +190,55 @@ Deno.serve(async (req: Request) => {
     if (wantsPlanning) {
       const now = new Date()
       const later = new Date(now.getTime() + 30 * 86400000)
+      const assignmentsRequest = currentCourseIdList.length
+        ? admin
+          .from("assignments")
+          .select("id,course_id,title,due_at,estimated_minutes,status")
+          .eq("user_id", user.id)
+          .in("course_id", currentCourseIdList)
+          .neq("status", "completed")
+          .order("due_at")
+          .limit(50)
+        : Promise.resolve({ data: [] })
+      const examsRequest = currentCourseIdList.length
+        ? admin
+          .from("exams")
+          .select("id,course_id,title,exam_at,topics_summary")
+          .eq("user_id", user.id)
+          .in("course_id", currentCourseIdList)
+          .gte("exam_at", now.toISOString())
+          .lte("exam_at", later.toISOString())
+          .order("exam_at")
+          .limit(5)
+        : Promise.resolve({ data: [] })
+      const sessionsRequest = currentCourseIdList.length
+        ? admin
+          .from("study_sessions")
+          .select("id,course_id,assignment_id,title,start_at,end_at,status")
+          .eq("user_id", user.id)
+          .or(`course_id.is.null,course_id.in.(${currentCourseIdList.join(",")})`)
+          .gte("end_at", now.toISOString())
+          .lte("start_at", later.toISOString())
+          .order("start_at")
+          .limit(8)
+        : admin
+          .from("study_sessions")
+          .select("id,course_id,assignment_id,title,start_at,end_at,status")
+          .eq("user_id", user.id)
+          .is("course_id", null)
+          .gte("end_at", now.toISOString())
+          .lte("start_at", later.toISOString())
+          .order("start_at")
+          .limit(8)
       const [
         { data: assignments = [] },
         { data: exams = [] },
         { data: sessions = [] },
         { data: reflections = [] },
       ] = await Promise.all([
-        admin
-          .from("assignments")
-          .select("id,course_id,title,due_at,estimated_minutes,status")
-          .eq("user_id", user.id)
-          .neq("status", "completed")
-          .order("due_at")
-          .limit(50),
-        admin
-          .from("exams")
-          .select("id,course_id,title,exam_at,topics_summary")
-          .eq("user_id", user.id)
-          .gte("exam_at", now.toISOString())
-          .lte("exam_at", later.toISOString())
-          .order("exam_at")
-          .limit(5),
-        admin
-          .from("study_sessions")
-          .select("id,course_id,assignment_id,title,start_at,end_at,status")
-          .eq("user_id", user.id)
-          .gte("end_at", now.toISOString())
-          .lte("start_at", later.toISOString())
-          .order("start_at")
-          .limit(8),
+        assignmentsRequest,
+        examsRequest,
+        sessionsRequest,
         admin
           .from("daily_reflections")
           .select("reflection_date,mood,energy,notes")
@@ -220,9 +247,9 @@ Deno.serve(async (req: Request) => {
           .limit(1),
       ])
       const plan = buildSmartPlan({
-        assignments: assignments || [],
-        exams: exams || [],
-        studySessions: sessions || [],
+        assignments: filterActiveCourseItems(assignments || [], currentCourseIds),
+        exams: filterActiveCourseItems(exams || [], currentCourseIds),
+        studySessions: filterActiveCourseItems(sessions || [], currentCourseIds, true),
         courses: courses || [],
         reflection: reflections?.[0] || null,
         preferences: profile,
@@ -307,14 +334,17 @@ Deno.serve(async (req: Request) => {
           : wantsSyllabus && !wantsLecture
             ? ["syllabus"]
             : ["lecture", "syllabus"]
-      const { data: results = [], error: resultsError } = await admin
-        .from("ai_processing_results")
-        .select("upload_id,kind,status,result,course_id,created_at")
-        .eq("user_id", user.id)
-        .in("kind", kinds)
-        .in("status", ["ready_for_review", "approved"])
-        .order("created_at", { ascending: false })
-        .limit(8)
+      const { data: results = [], error: resultsError } = currentCourseIdList.length
+        ? await admin
+          .from("ai_processing_results")
+          .select("upload_id,kind,status,result,course_id,created_at")
+          .eq("user_id", user.id)
+          .in("course_id", currentCourseIdList)
+          .in("kind", kinds)
+          .in("status", ["ready_for_review", "approved"])
+          .order("created_at", { ascending: false })
+          .limit(8)
+        : { data: [], error: null }
       if (resultsError) throw resultsError
       const uploadIds = (results || []).map((item: any) => item.upload_id)
       const { data: uploads = [], error: uploadsError } = uploadIds.length
