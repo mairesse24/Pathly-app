@@ -68,8 +68,11 @@ export async function connectCanvasWithToken(canvasBaseUrl: string, accessToken:
   const { data, error } = await supabase.functions.invoke("canvas-token-connect", {
     body: { canvas_base_url: normalized, access_token: accessToken },
   })
-  if (error || data?.error) {
-    throw new Error("Pathly couldn't verify this Canvas connection. Check the school URL and access token.")
+  if (data?.error) throw new Error(data.message || "Pathly couldn't verify this Canvas connection. Check the school URL and access token.")
+  if (error) {
+    const response = (error as { context?: Response }).context
+    const payload = response ? await response.clone().json().catch(() => null) as { message?: string } | null : null
+    throw new Error(payload?.message || "Pathly couldn't verify this Canvas connection. Check the school URL and access token.")
   }
 }
 

@@ -109,6 +109,10 @@ async function encryptionKey() {
   return crypto.subtle.importKey("raw", bytes, "AES-GCM", false, ["encrypt", "decrypt"])
 }
 
+export async function assertCanvasEncryptionConfigured() {
+  await encryptionKey()
+}
+
 export async function encryptSecret(value: string) {
   const nonce = crypto.getRandomValues(new Uint8Array(12))
   const ciphertext = await crypto.subtle.encrypt(

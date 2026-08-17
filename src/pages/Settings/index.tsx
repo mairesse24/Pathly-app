@@ -376,7 +376,7 @@ function CanvasConnectionCard({
 
       {!connected && showTokenConnection && (
         <form className="canvas-token-panel" onSubmit={connectWithToken}>
-          <p className="eyebrow">Advanced</p>
+          <p className="eyebrow">Developer/test connection</p>
           <h4>Connect with Canvas access token</h4>
           <p>Some schools allow students to create a personal Canvas access token. Only use this option if your Canvas account provides that feature.</p>
           <ol><li>Open Canvas.</li><li>Go to Account → Settings.</li><li>Find Approved Integrations.</li><li>Select New Access Token.</li><li>Create a token for Pathly.</li><li>Copy it once and return to Pathly.</li></ol>
