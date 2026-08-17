@@ -12,6 +12,7 @@ import { useAuth } from "./AuthContext"
 import * as semesterService from "../services/semesters"
 
 import * as courseService from "../services/courses"
+import type { CourseRemovalMode } from "../services/courses"
 
 import * as assignmentService from "../services/assignments"
 
@@ -54,7 +55,7 @@ type Value = {
     v: Pick<CourseRecord, "course_code" | "course_name">,
   ) => Promise<CourseRecord>
   updateCourse: (id:string,v:Pick<CourseRecord,"course_code"|"course_name">)=>Promise<CourseRecord>
-  removeCourse: (id:string)=>Promise<void>
+  removeCourse: (id:string,mode:CourseRemovalMode)=>Promise<void>
 
   setAssignmentStatus: (
     id: string,
@@ -184,7 +185,7 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
   }
 
   async function updateCourse(id:string,v:Pick<CourseRecord,"course_code"|"course_name">){const row=await courseService.updateCourse(id,v);setCourses(current=>current.map(course=>course.id===id?row:course));return row}
-  async function removeCourse(id:string){await courseService.deleteCourseSafely(id);setCourses(current=>current.filter(course=>course.id!==id))}
+  async function removeCourse(id:string,mode:CourseRemovalMode){await courseService.removeCourseSafely(id,mode);setCourses(current=>current.filter(course=>course.id!==id));await load()}
 
   async function setAssignmentStatus(
     id: string,
