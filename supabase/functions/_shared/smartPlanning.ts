@@ -65,6 +65,7 @@ export type SmartPlan = {
   priorities: PlanningPriority[]
   conflicts: PlanningConflict[]
   energyAdjustment: "low" | "high" | "none"
+  studyPreferences: { preferredTime: string | null; focusMinutes: number; breakMinutes: number | null; studiesStraightThrough: boolean }
 }
 
 export type SmartPlanInput = {
@@ -108,7 +109,7 @@ function calendarDaysBetween(from: Date, to: Date, timeZone: string) {
 
 function energyAdjustment(reflection?: PlanningReflection | null) {
   const value = `${reflection?.energy || ""} ${reflection?.mood || ""}`.toLowerCase()
-  if (/low|strained|drained|tired/.test(value)) return "low" as const
+  if (/low|strained|struggling|overwhelmed|drained|tired/.test(value)) return "low" as const
   if (/high|rested|energized|good/.test(value)) return "high" as const
   return "none" as const
 }
@@ -257,5 +258,11 @@ export function buildSmartPlan(input: SmartPlanInput): SmartPlan {
       .slice(0, energy === "low" ? 2 : 3),
     conflicts,
     energyAdjustment: energy,
+    studyPreferences: {
+      preferredTime: input.preferences?.preferred_study_time === "no_preference" ? null : input.preferences?.preferred_study_time || null,
+      focusMinutes: preferredMinutes,
+      breakMinutes: input.preferences?.prefers_breaks ? input.preferences.break_duration_minutes || null : null,
+      studiesStraightThrough: input.preferences?.prefers_breaks === false,
+    },
   }
 }

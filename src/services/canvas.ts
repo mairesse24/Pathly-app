@@ -49,6 +49,15 @@ export type CanvasSyncResult = {
   assignments_updated: number
 }
 
+export type CanvasCleanupImpact = {
+  canvas_courses: number
+  assignments: number
+  exams: number
+  study_sessions: number
+  uploads: number
+  processing_results: number
+}
+
 export const canvasUnavailableMessage =
   "Your school's Canvas setup doesn't currently allow this connection. You can still use Pathly with manual entry and syllabus uploads."
 
@@ -115,8 +124,21 @@ export async function connectCanvasWithToken(canvasBaseUrl: string, accessToken:
   }
 }
 
-export async function disconnectCanvas() {
-  const { data, error } = await supabase.functions.invoke("canvas-disconnect", { body: {} })
+export async function getCanvasCleanupImpact() {
+  const { data, error } = await supabase.functions.invoke("canvas-disconnect", { body: { action: "preview_cleanup" } })
+  if (error || data?.error) throw new Error("Pathly couldn't inspect imported Canvas courses right now.")
+  return data.impact as CanvasCleanupImpact
+}
+
+export async function disconnectCanvas(removeCourses = false) {
+  const { data, error } = await supabase.functions.invoke("canvas-disconnect", {
+    body: { action: "disconnect", remove_courses: removeCourses },
+  })
   if (error || data?.error) throw new Error("Pathly couldn't disconnect Canvas right now. Try again.")
+}
+
+export async function removeOldCanvasCourses() {
+  const { data, error } = await supabase.functions.invoke("canvas-disconnect", { body: { action: "remove_old_courses" } })
+  if (error || data?.error) throw new Error("Pathly couldn't remove old Canvas courses right now. Try again.")
 }
 

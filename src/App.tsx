@@ -32,9 +32,11 @@ import { OnboardingPage } from "./pages/Onboarding"
 import { CourseDetailPage } from "./pages/CourseDetail"
 import { AcademicDataProvider } from "./context/AcademicDataContext"
 import { ProfileProvider } from "./context/ProfileContext"
+import { ThemeProvider } from "./context/ThemeContext"
 
 export default function App() {
   return (
+    <ThemeProvider>
     <BrowserRouter>
       <AuthProvider>
         <ProfileProvider>
@@ -67,5 +69,6 @@ export default function App() {
         </ProfileProvider>
       </AuthProvider>
     </BrowserRouter>
+    </ThemeProvider>
   )
 }

@@ -242,6 +242,7 @@ export function DashboardPage() {
             initialMood={reflection?.mood ?? ""}
             initialEnergy={reflection?.energy ?? ""}
             initialNotes={reflection?.notes ?? ""}
+            questionDate={today}
             onSave={persistReflection}
           />
         </div>
@@ -257,6 +258,8 @@ function ReflectionCard({
 
   initialNotes,
 
+  questionDate,
+
   onSave,
 }: {
   initialMood: string
@@ -264,6 +267,8 @@ function ReflectionCard({
   initialNotes: string
 
   initialEnergy: string
+
+  questionDate: string
 
   onSave: (m: string, e: string, n: string) => Promise<unknown>
 }) {
@@ -301,25 +306,40 @@ function ReflectionCard({
     }
   }
 
-  const moods = ["strained", "low", "steady", "good", "rested"]
+  const moods = [
+    { value: "struggling", label: "😣 Struggling", legacy: ["strained"] },
+    { value: "overwhelmed", label: "😕 Overwhelmed", legacy: ["low"] },
+    { value: "steady", label: "😐 Steady", legacy: [] },
+    { value: "good", label: "🙂 Good", legacy: [] },
+    { value: "rested", label: "🌟 Rested", legacy: [] },
+  ]
+  const selectedMood = moods.find((option) => option.value === mood || option.legacy.includes(mood))?.value ?? mood
+  const questions = [
+    "How are you feeling today?",
+    "What would make today feel more manageable?",
+    "How is your energy holding up today?",
+    "What do you need most from today?",
+    "What is one thing you can give yourself credit for today?",
+  ]
+  const question = questions[Number.parseInt(questionDate.replace(/-/g, ""), 10) % questions.length]
 
   return (
     <Card className="reflection">
       <p className="eyebrow">Daily reflection</p>
-      <h3>How are you feeling today?</h3>
+      <h3>{question}</h3>
       <div className="moods">
-        {moods.map((m) => (
+        {moods.map((option) => (
           <button
-            key={m}
-            className={mood === m ? "selected" : ""}
+            key={option.value}
+            className={selectedMood === option.value ? "selected" : ""}
             onClick={() => {
-              setMood(m)
+              setMood(option.value)
 
               setStatus("idle")
             }}
-            aria-label={`Mood ${m}`}
+            aria-pressed={selectedMood === option.value}
           >
-            {m.slice(0, 1).toUpperCase()}
+            {option.label}
           </button>
         ))}
       </div>

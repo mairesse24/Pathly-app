@@ -5,14 +5,17 @@ import { Button } from "../../components/ui/Button"
 import { Card } from "../../components/ui/Card"
 import { useAcademicData } from "../../context/AcademicDataContext"
 import { useProfile } from "../../context/ProfileContext"
+import { useTheme, type ThemePreference } from "../../context/ThemeContext"
 import {
   canvasUnavailableMessage,
   connectCanvasWithToken,
   disconnectCanvas,
+  getCanvasCleanupImpact,
   getCanvasConnection,
   normalizeCanvasDomain,
   previewCanvasCourses,
   startCanvasConnection,
+  removeOldCanvasCourses,
   syncCanvas,
   type CanvasSyncPreview,
   type CanvasConnection,
@@ -41,6 +44,7 @@ export function SettingsPage() {
   const [message, setMessage] = useState("")
   const [error, setError] = useState("")
   const [storageUsed, setStorageUsed] = useState(0)
+  const { preference, setPreference } = useTheme()
 
   useEffect(() => {
     if (profile) {
@@ -124,6 +128,19 @@ export function SettingsPage() {
               </Button>
             </form>
           )}
+        </Card>
+
+        <Card>
+          <p className="eyebrow">Appearance</p>
+          <h3>Choose how Pathly looks</h3>
+          <div className="theme-options" role="radiogroup" aria-label="Appearance preference">
+            {(["system", "light", "dark"] as ThemePreference[]).map((option) => (
+              <label key={option}>
+                <input type="radio" name="appearance" value={option} checked={preference === option} onChange={() => setPreference(option)} />
+                {option.slice(0, 1).toUpperCase() + option.slice(1)}
+              </label>
+            ))}
+          </div>
         </Card>
 
         <Card>
@@ -214,6 +231,7 @@ function CanvasConnectionCard({
   const [error, setError] = useState("")
   const [preview, setPreview] = useState<CanvasSyncPreview | null>(null)
   const [selectedCourseIds, setSelectedCourseIds] = useState<string[]>([])
+  const [cleanup, setCleanup] = useState<{ mode: "disconnect" | "old"; impact: Awaited<ReturnType<typeof getCanvasCleanupImpact>> } | null>(null)
 
   async function load() {
     setLoading(true)
@@ -320,14 +338,31 @@ function CanvasConnectionCard({
     }
   }
 
-  async function disconnect() {
+  async function requestCleanup(mode: "disconnect" | "old") {
+    setError("")
+    setMessage("")
+    try {
+      const impact = await getCanvasCleanupImpact()
+      setCleanup({ mode, impact })
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to inspect imported Canvas courses.")
+    }
+  }
+
+  async function confirmCleanup(removeCourses: boolean) {
+    if (!cleanup) return
     setAction("disconnecting")
     setError("")
     setMessage("")
     try {
-      await disconnectCanvas()
+      if (cleanup.mode === "disconnect") await disconnectCanvas(removeCourses)
+      else if (removeCourses) await removeOldCanvasCourses()
       await load()
-      setMessage("Canvas disconnected. Imported Pathly items were kept.")
+      await onSynced()
+      setCleanup(null)
+      setMessage(removeCourses
+        ? "Canvas-imported courses were removed from Study Hub. Attached Pathly data was preserved."
+        : "Canvas disconnected. Imported Pathly items were kept.")
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to disconnect Canvas.")
     } finally {
@@ -392,7 +427,20 @@ function CanvasConnectionCard({
           </div>
           <div className="form-actions canvas-sync-actions">
             <Button onClick={() => void previewCourses()} disabled={action !== "idle"}>{action === "syncing" ? "Syncing..." : "Sync now"}</Button>
-            <Button variant="quiet" onClick={() => void disconnect()} disabled={action !== "idle"}>{action === "disconnecting" ? "Disconnecting..." : "Disconnect"}</Button>
+            <Button variant="quiet" onClick={() => void requestCleanup("disconnect")} disabled={action !== "idle"}>{action === "disconnecting" ? "Disconnecting..." : "Disconnect"}</Button>
+          </div>
+        </div>
+      )}
+
+      {cleanup && (
+        <div className="canvas-token-panel" role="dialog" aria-modal="true" aria-label="Canvas course cleanup">
+          <h4>{cleanup.mode === "disconnect" ? "Keep Canvas-imported courses in Pathly?" : "Remove old Canvas courses from Study Hub?"}</h4>
+          <p>{cleanup.mode === "disconnect" ? "You can disconnect Canvas and keep the imported courses, or remove them from active Pathly views." : "This hides Canvas-imported courses from active Pathly views."}</p>
+          {cleanup.impact.canvas_courses > 0 && <p className="review-note">{cleanup.impact.canvas_courses} Canvas course{cleanup.impact.canvas_courses === 1 ? "" : "s"} found. {cleanup.impact.assignments + cleanup.impact.exams + cleanup.impact.study_sessions + cleanup.impact.uploads + cleanup.impact.processing_results > 0 && "Attached assignments, sessions, files, and processing records will be preserved, not deleted."}</p>}
+          <div className="form-actions">
+            {cleanup.mode === "disconnect" && <Button variant="secondary" onClick={() => void confirmCleanup(false)} disabled={action !== "idle"}>Keep courses</Button>}
+            <Button onClick={() => void confirmCleanup(true)} disabled={action !== "idle"}>{cleanup.mode === "disconnect" ? "Remove Canvas-imported courses" : "Remove old Canvas courses"}</Button>
+            <Button variant="quiet" onClick={() => setCleanup(null)} disabled={action !== "idle"}>Cancel</Button>
           </div>
         </div>
       )}
@@ -423,6 +471,12 @@ function CanvasConnectionCard({
           <Button variant="quiet" onClick={() => setShowTokenConnection((value) => !value)} disabled={action !== "idle"} aria-expanded={showTokenConnection}>Having trouble connecting?</Button>
         </>}
       </div>
+
+      {!connected && connection && (
+        <Button variant="secondary" onClick={() => void requestCleanup("old")} disabled={action !== "idle"}>
+          Remove old Canvas courses from Study Hub
+        </Button>
+      )}
 
       {!connected && showTokenConnection && (
         <form className="canvas-token-panel" onSubmit={connectWithToken}>
