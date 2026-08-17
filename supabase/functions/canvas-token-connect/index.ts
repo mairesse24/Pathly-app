@@ -97,7 +97,8 @@ Deno.serve(async (req) => {
     if (code === "canvas_403") return respond({ error: code, message: "Canvas accepted your account but does not allow access to the information Pathly needs." }, 403)
     if (code === "not_canvas_domain") return respond({ error: code, message: "We couldn't verify this as a Canvas school address." }, 400)
     if (code === "TimeoutError" || code === "TypeError") return respond({ error: "canvas_unreachable", message: "Pathly couldn't reach your school's Canvas right now." }, 503)
-    if (stage === "encryption_configuration" || stage === "credential_storage") return respond({ error: "secure_storage_unavailable", message: "Pathly couldn't securely save this connection right now." }, 503)
+    if (stage === "encryption_configuration" || stage === "credential_storage" || code.startsWith("canvas_encryption_") || code.startsWith("canvas_credential_storage_"))
+      return respond({ error: "secure_storage_unavailable", message: "Pathly couldn't securely save this connection right now." }, 503)
     return respond({ error: "verification_failed", message: "Pathly couldn't verify this Canvas connection. Check the school URL and access token." }, 400)
   }
 })

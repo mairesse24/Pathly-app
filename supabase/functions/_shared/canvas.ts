@@ -104,9 +104,16 @@ function base64Url(bytes: Uint8Array) {
 }
 
 async function encryptionKey() {
-  const bytes = base64ToBytes(canvasConfig().encryptionKey)
-  if (bytes.length !== 32) throw new Error("server_configuration")
-  return crypto.subtle.importKey("raw", bytes, "AES-GCM", false, ["encrypt", "decrypt"])
+  const encoded = canvasConfig().encryptionKey
+  if (!encoded) throw new Error("canvas_encryption_secret_missing")
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(encoded) || encoded.length % 4 !== 0)
+    throw new Error("canvas_encryption_secret_invalid_base64")
+  let bytes: Uint8Array
+  try { bytes = base64ToBytes(encoded) } catch { throw new Error("canvas_encryption_secret_invalid_base64") }
+  if (bytes.length !== 32) throw new Error("canvas_encryption_secret_wrong_length")
+  try {
+    return await crypto.subtle.importKey("raw", bytes, "AES-GCM", false, ["encrypt", "decrypt"])
+  } catch { throw new Error("canvas_encryption_key_import_failed") }
 }
 
 export async function assertCanvasEncryptionConfigured() {
@@ -115,11 +122,17 @@ export async function assertCanvasEncryptionConfigured() {
 
 export async function encryptSecret(value: string) {
   const nonce = crypto.getRandomValues(new Uint8Array(12))
-  const ciphertext = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv: nonce },
-    await encryptionKey(),
-    new TextEncoder().encode(value),
-  )
+  let ciphertext: ArrayBuffer
+  try {
+    ciphertext = await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv: nonce },
+      await encryptionKey(),
+      new TextEncoder().encode(value),
+    )
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("canvas_encryption_")) throw error
+    throw new Error("canvas_encryption_failed")
+  }
   return {
     ciphertext: bytesToBase64(new Uint8Array(ciphertext)),
     nonce: bytesToBase64(nonce),
@@ -204,7 +217,7 @@ export async function storeCredentials(
     expires_at: expiresAt,
     updated_at: new Date().toISOString(),
   }, { onConflict: "connection_id" })
-  if (error) throw error
+  if (error) throw new Error(`canvas_credential_storage_${error.code || "failed"}`)
   return token.access_token
 }
 
