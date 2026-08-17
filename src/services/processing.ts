@@ -72,5 +72,5 @@ export async function approveSyllabus(input: {
     p_processing_id: input.processing.id, p_assignments: assignments, p_exams: exams, p_course_id: input.courseId,
   })
   if (error) throw error
-  return { ...input.processing, status: "approved", approved_at: new Date().toISOString() } as ProcessingResultRecord
+  return { ...input.processing, course_id: input.courseId, status: "approved", approved_at: new Date().toISOString() } as ProcessingResultRecord
 }
