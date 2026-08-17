@@ -7,6 +7,7 @@ import { useAcademicData } from "../../context/AcademicDataContext"
 import { useProfile } from "../../context/ProfileContext"
 import {
   canvasUnavailableMessage,
+  connectCanvasWithToken,
   disconnectCanvas,
   getCanvasConnection,
   normalizeCanvasDomain,
@@ -204,7 +205,9 @@ function CanvasConnectionCard({
   const [connection, setConnection] = useState<CanvasConnection | null>(null)
   const [domain, setDomain] = useState("")
   const [loading, setLoading] = useState(true)
-  const [action, setAction] = useState<"idle" | "connecting" | "syncing" | "disconnecting">("idle")
+  const [action, setAction] = useState<"idle" | "connecting" | "token-connecting" | "syncing" | "disconnecting">("idle")
+  const [showTokenConnection, setShowTokenConnection] = useState(false)
+  const [accessToken, setAccessToken] = useState("")
   const [message, setMessage] = useState("")
   const [error, setError] = useState("")
 
@@ -258,6 +261,27 @@ function CanvasConnectionCard({
       setError(reason instanceof Error ? reason.message : canvasUnavailableMessage)
       await load()
     } finally {
+      setAction("idle")
+    }
+  }
+
+  async function connectWithToken(event: FormEvent) {
+    event.preventDefault()
+    setAction("token-connecting")
+    setError("")
+    setMessage("")
+    try {
+      const normalized = normalizeCanvasDomain(domain)
+      setDomain(normalized)
+      await connectCanvasWithToken(normalized, accessToken)
+      setAccessToken("")
+      await load()
+      setMessage("Canvas connected. Sync when you're ready.")
+      setShowTokenConnection(false)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Pathly couldn't verify this Canvas connection. Check the school URL and access token.")
+    } finally {
+      setAccessToken("")
       setAction("idle")
     }
   }
@@ -324,6 +348,7 @@ function CanvasConnectionCard({
         <div className="canvas-connection-details">
           <strong>{connection.canvas_base_url}</strong>
           <small>
+            {connection.auth_type === "personal_access_token" ? "Connected with an access token · " : ""}
             {connection.last_synced_at
               ? `Last synced ${formatInstant(connection.last_synced_at, timezone, { dateStyle: "medium", timeStyle: "short" })}`
               : "Not synced yet"}
@@ -341,13 +366,29 @@ function CanvasConnectionCard({
               {action === "disconnecting" ? "Disconnecting…" : "Disconnect"}
             </Button>
           </>
-        ) : (
+        ) : <>
           <Button onClick={() => void connect()} disabled={action !== "idle" || !domain.trim()}>
             {action === "connecting" ? "Connecting…" : "Connect Canvas"}
           </Button>
-        )}
+          <Button variant="quiet" onClick={() => setShowTokenConnection((value) => !value)} disabled={action !== "idle"} aria-expanded={showTokenConnection}>Having trouble connecting?</Button>
+        </>}
       </div>
 
+      {!connected && showTokenConnection && (
+        <form className="canvas-token-panel" onSubmit={connectWithToken}>
+          <p className="eyebrow">Advanced</p>
+          <h4>Connect with Canvas access token</h4>
+          <p>Some schools allow students to create a personal Canvas access token. Only use this option if your Canvas account provides that feature.</p>
+          <ol><li>Open Canvas.</li><li>Go to Account → Settings.</li><li>Find Approved Integrations.</li><li>Select New Access Token.</li><li>Create a token for Pathly.</li><li>Copy it once and return to Pathly.</li></ol>
+          <label className="canvas-domain-field">Canvas access token
+            <input type="password" autoComplete="new-password" spellCheck={false} value={accessToken} onChange={(event) => setAccessToken(event.target.value)} disabled={action !== "idle"}/>
+            <small>Treat this token like a password. Pathly sends it directly to its secure server and never shows it again.</small>
+          </label>
+          <Button disabled={action !== "idle" || !domain.trim() || !accessToken.trim()}>{action === "token-connecting" ? "Verifying…" : "Connect with access token"}</Button>
+        </form>
+      )}
+
+      {connected && connection?.auth_type === "personal_access_token" && <p className="review-note">Disconnecting removes the stored token from Pathly. You can also revoke it from Canvas Account Settings.</p>}
       {message && <p className="save-success" role="status">{message}</p>}
       {error && <p className="form-message" role="alert">{error}</p>}
     </Card>

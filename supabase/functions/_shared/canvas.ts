@@ -206,13 +206,14 @@ export async function storeCredentials(
 
 export async function validAccessToken(
   admin: SupabaseClient,
-  connection: { id: string; user_id: string; canvas_base_url: string },
+  connection: { id: string; user_id: string; canvas_base_url: string; auth_type?: "oauth" | "personal_access_token" },
 ) {
   const { data, error } = await admin.from("canvas_credentials")
     .select("*").eq("connection_id", connection.id).eq("user_id", connection.user_id).single()
   if (error || !data) throw new Error("reauthorization_required")
   const credential = data as CredentialRow
   const access = await decryptSecret(credential.access_token_ciphertext, credential.access_token_nonce)
+  if (connection.auth_type === "personal_access_token") return access
   if (!credential.expires_at || new Date(credential.expires_at).getTime() > Date.now() + 60_000) return access
   if (!credential.refresh_token_ciphertext || !credential.refresh_token_nonce)
     throw new Error("reauthorization_required")

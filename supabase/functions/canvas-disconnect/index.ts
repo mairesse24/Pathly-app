@@ -12,9 +12,9 @@ Deno.serve(async (req) => {
   try {
     const { admin, user } = await authenticate(req)
     const { data: connection } = await admin.from("canvas_connections")
-      .select("id,user_id,canvas_base_url,status").eq("user_id", user.id).maybeSingle()
+      .select("id,user_id,canvas_base_url,status,auth_type").eq("user_id", user.id).maybeSingle()
     if (!connection) return respond({ disconnected: true })
-    try {
+    if (connection.auth_type === "oauth") try {
       const accessToken = await validAccessToken(admin, connection)
       await fetch(`${connection.canvas_base_url}/login/oauth2/token`, {
         method: "DELETE",

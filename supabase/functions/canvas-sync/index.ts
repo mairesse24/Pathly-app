@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
   try {
     const { admin, user } = await authenticate(req)
     const { data: connection, error } = await admin.from("canvas_connections")
-      .select("id,user_id,canvas_base_url,status")
+      .select("id,user_id,canvas_base_url,status,auth_type")
       .eq("user_id", user.id).maybeSingle()
     if (error || !connection || connection.status !== "connected")
       return respond({ error: "not_connected", message: unavailableMessage }, 409)
@@ -212,11 +212,20 @@ Deno.serve(async (req) => {
     const code = error instanceof Error ? error.message : "sync_failed"
     if (code === "authentication_required" || code === "invalid_session") return respond({ error: code }, 401)
     if (/reauthorization|required|canvas_api_401/.test(code)) {
+      let authType: "oauth" | "personal_access_token" = "oauth"
       try {
         const { admin, user } = await authenticate(req)
+        const { data: connection } = await admin.from("canvas_connections")
+          .select("auth_type").eq("user_id", user.id).maybeSingle()
+        if (connection?.auth_type === "personal_access_token") authType = "personal_access_token"
         await setNeedsReauthorization(admin, user)
       } catch { /* authentication response already handled below */ }
-      return respond({ error: "needs_reauthorization", message: unavailableMessage }, 401)
+      return respond({
+        error: "needs_reauthorization",
+        message: authType === "personal_access_token"
+          ? "Your Canvas access token is no longer valid. Create a new token in Canvas to reconnect."
+          : unavailableMessage,
+      }, 401)
     }
     return respond({ error: "sync_failed", message: unavailableMessage }, 502)
   }
