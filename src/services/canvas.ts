@@ -18,6 +18,37 @@ export type CanvasConnection = {
   updated_at: string
 }
 
+export type CanvasAvailableCourse = {
+  id: string
+  course_code: string | null
+  course_name: string
+}
+
+export type CanvasSyncPreview = {
+  mode: "preview"
+  current_courses: CanvasAvailableCourse[]
+  courses_available: number
+  historical_courses_excluded: number
+  courses_seen?: number
+  courses_created?: number
+  courses_updated?: number
+  assignments_seen?: number
+  assignments_created?: number
+  assignments_updated?: number
+}
+
+export type CanvasSyncResult = {
+  mode: "import"
+  synced_at: string
+  courses_available: number
+  historical_courses_excluded: number
+  courses_created: number
+  courses_updated: number
+  assignments_seen: number
+  assignments_created: number
+  assignments_updated: number
+}
+
 export const canvasUnavailableMessage =
   "Your school's Canvas setup doesn't currently allow this connection. You can still use Pathly with manual entry and syllabus uploads."
 
@@ -57,18 +88,18 @@ export async function startCanvasConnection(canvasBaseUrl: string) {
   return data.authorization_url as string
 }
 
-export async function syncCanvas() {
-  const { data, error } = await supabase.functions.invoke("canvas-sync", { body: {} })
+export async function previewCanvasCourses() {
+  const { data, error } = await supabase.functions.invoke("canvas-sync", { body: { mode: "preview" } })
   if (error || data?.error) throw new Error(data?.message || canvasUnavailableMessage)
-  return data as {
-    synced_at: string
-    courses_seen: number
-    courses_created: number
-    courses_updated: number
-    assignments_seen: number
-    assignments_created: number
-    assignments_updated: number
-  }
+  return data as CanvasSyncPreview
+}
+
+export async function syncCanvas(selectedCourseIds: string[]) {
+  const { data, error } = await supabase.functions.invoke("canvas-sync", {
+    body: { mode: "import", selected_course_ids: selectedCourseIds },
+  })
+  if (error || data?.error) throw new Error(data?.message || canvasUnavailableMessage)
+  return data as CanvasSyncResult
 }
 
 export async function connectCanvasWithToken(canvasBaseUrl: string, accessToken: string) {

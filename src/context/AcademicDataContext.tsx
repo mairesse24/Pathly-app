@@ -134,11 +134,12 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
 
       setCourses(c)
 
-      setAssignments(a)
+      const activeCourseIds = new Set(c.map((course) => course.id))
+      setAssignments(a.filter((assignment) => activeCourseIds.has(assignment.course_id)))
 
-      setExams(e)
+      setExams(e.filter((exam) => activeCourseIds.has(exam.course_id)))
 
-      setStudySessions(ss)
+      setStudySessions(ss.filter((session) => !session.course_id || activeCourseIds.has(session.course_id)))
 
       setReflection(r)
     } catch (e) {
@@ -174,6 +175,8 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
       meeting_start: null,
 
       meeting_end: null,
+
+      is_active: true,
     })
 
     setCourses((x) => [...x, row])

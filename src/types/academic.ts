@@ -18,6 +18,7 @@ export type CourseRecord = {
   meeting_days: string[] | null
   meeting_start: string | null
   meeting_end: string | null
+  is_active: boolean
   source?: "manual" | "canvas"
   canvas_connection_id?: string | null
   canvas_course_id?: string | null

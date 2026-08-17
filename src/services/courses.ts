@@ -4,6 +4,7 @@ export async function listCourses() {
   const { data, error } = await supabase
     .from("courses")
     .select("*")
+    .eq("is_active", true)
     .order("course_code")
   if (error) throw error
   return data as CourseRecord[]

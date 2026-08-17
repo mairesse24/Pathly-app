@@ -19,6 +19,19 @@ Deno.serve(async (req) => {
     const { admin, user } = await authenticate(req)
     const body = await req.json()
     const canvasBaseUrl = normalizeCanvasBaseUrl(body.canvas_base_url)
+    const { data: existingConnection, error: existingConnectionError } = await admin
+      .from("canvas_connections")
+      .select("canvas_base_url,status")
+      .eq("user_id", user.id)
+      .maybeSingle()
+    if (existingConnectionError) throw existingConnectionError
+    if (
+      existingConnection?.status === "connected" &&
+      existingConnection.canvas_base_url !== canvasBaseUrl
+    ) return respond({
+      error: "canvas_connection_already_exists",
+      message: "Pathly currently supports one Canvas connection at a time. Keep your current connection, or disconnect it before connecting another school.",
+    }, 409)
     if (!hasCanvasConfig()) {
       await admin.from("canvas_connections").upsert({
         user_id: user.id,

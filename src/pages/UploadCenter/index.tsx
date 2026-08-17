@@ -57,13 +57,7 @@ export function UploadCenterPage() {
   const { profile } = useProfile()
   const { user } = useAuth()
 
-  const { courses, semesters } = useAcademicData()
-  const currentSemesterIds = new Set(
-    semesters.filter((semester) => semester.is_current).map((semester) => semester.id),
-  )
-  const activeCourses = courses.filter(
-    (course) => course.semester_id !== null && currentSemesterIds.has(course.semester_id),
-  )
+  const { courses } = useAcademicData()
 
   const [params] = useSearchParams()
 
@@ -335,7 +329,7 @@ export function UploadCenterPage() {
                   onChange={(event) => setCourseId(event.target.value)}
                 >
                   <option value="">Select a course</option>
-                  {activeCourses.map((course) => (
+                  {courses.map((course) => (
                     <option key={course.id} value={course.id}>
                       {course.course_code} — {course.course_name}
                     </option>

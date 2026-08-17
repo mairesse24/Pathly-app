@@ -65,6 +65,16 @@ Deno.serve(async (req) => {
     if (!Array.isArray(responseBody)) throw new Error("not_canvas_domain")
 
     stage = "connection_preparation"
+    const { data: existingConnection, error: existingConnectionError } = await admin
+      .from("canvas_connections")
+      .select("id,canvas_base_url,status")
+      .eq("user_id", userId)
+      .maybeSingle()
+    if (existingConnectionError) throw existingConnectionError
+    if (
+      existingConnection?.status === "connected" &&
+      existingConnection.canvas_base_url !== canvasBaseUrl
+    ) throw new Error("canvas_connection_already_exists")
     const now = new Date().toISOString()
     const { data: connection, error: connectionError } = await admin.from("canvas_connections").upsert({
       user_id: userId,
@@ -96,6 +106,11 @@ Deno.serve(async (req) => {
     if (code === "canvas_401") return respond({ error: code, message: "The Canvas access token was not accepted. It may be incomplete, expired, or revoked." }, 401)
     if (code === "canvas_403") return respond({ error: code, message: "Canvas accepted your account but does not allow access to the information Pathly needs." }, 403)
     if (code === "not_canvas_domain") return respond({ error: code, message: "We couldn't verify this as a Canvas school address." }, 400)
+    if (code === "canvas_connection_already_exists")
+      return respond({
+        error: code,
+        message: "Pathly currently supports one Canvas connection at a time. Keep your current connection, or disconnect it before connecting another school.",
+      }, 409)
     if (code === "TimeoutError" || code === "TypeError") return respond({ error: "canvas_unreachable", message: "Pathly couldn't reach your school's Canvas right now." }, 503)
     if (stage === "encryption_configuration" || stage === "credential_storage" || code.startsWith("canvas_encryption_") || code.startsWith("canvas_credential_storage_"))
       return respond({ error: "secure_storage_unavailable", message: "Pathly couldn't securely save this connection right now." }, 503)

@@ -11,8 +11,10 @@ import {
   disconnectCanvas,
   getCanvasConnection,
   normalizeCanvasDomain,
+  previewCanvasCourses,
   startCanvasConnection,
   syncCanvas,
+  type CanvasSyncPreview,
   type CanvasConnection,
 } from "../../services/canvas"
 import { formatBytes, listUploads, USER_QUOTA_BYTES } from "../../services/uploads"
@@ -210,6 +212,8 @@ function CanvasConnectionCard({
   const [accessToken, setAccessToken] = useState("")
   const [message, setMessage] = useState("")
   const [error, setError] = useState("")
+  const [preview, setPreview] = useState<CanvasSyncPreview | null>(null)
+  const [selectedCourseIds, setSelectedCourseIds] = useState<string[]>([])
 
   async function load() {
     setLoading(true)
@@ -247,12 +251,20 @@ function CanvasConnectionCard({
     }
   }
 
-  async function sync() {
+  async function previewCourses() {
     setAction("syncing")
     setError("")
     setMessage("")
     try {
-      const result = await syncCanvas()
+      const result = await previewCanvasCourses()
+      if (!result.courses_available) {
+        setPreview(null)
+        setMessage("Canvas is connected, but we didn't find any current courses to import.")
+        return
+      }
+      setPreview(result)
+      setSelectedCourseIds(result.current_courses.map((course) => course.id))
+      return
       await Promise.all([load(), onSynced()])
       setMessage(
         `Canvas synced successfully. ${result.courses_seen} course${result.courses_seen === 1 ? "" : "s"} · ${result.assignments_seen} assignment${result.assignments_seen === 1 ? "" : "s"} updated. ${result.courses_created} new course${result.courses_created === 1 ? "" : "s"} and ${result.assignments_created} new assignment${result.assignments_created === 1 ? "" : "s"} added.`,
@@ -263,6 +275,28 @@ function CanvasConnectionCard({
     } finally {
       setAction("idle")
     }
+  }
+
+  async function importSelectedCourses() {
+    setAction("syncing")
+    setError("")
+    setMessage("")
+    try {
+      const result = await syncCanvas(selectedCourseIds)
+      await Promise.all([load(), onSynced()])
+      setPreview(null)
+      setMessage(`Canvas synced successfully. ${result.assignments_seen} current assignment${result.assignments_seen === 1 ? "" : "s"} reviewed. ${result.courses_created} new course${result.courses_created === 1 ? "" : "s"} and ${result.assignments_created} new assignment${result.assignments_created === 1 ? "" : "s"} added.`)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : canvasUnavailableMessage)
+    } finally {
+      setAction("idle")
+    }
+  }
+
+  function toggleCourse(courseId: string) {
+    setSelectedCourseIds((current) => current.includes(courseId)
+      ? current.filter((id) => id !== courseId)
+      : [...current, courseId])
   }
 
   async function connectWithToken(event: FormEvent) {
@@ -357,8 +391,26 @@ function CanvasConnectionCard({
           </small>
           </div>
           <div className="form-actions canvas-sync-actions">
-            <Button onClick={() => void sync()} disabled={action !== "idle"}>{action === "syncing" ? "Syncing..." : "Sync now"}</Button>
+            <Button onClick={() => void previewCourses()} disabled={action !== "idle"}>{action === "syncing" ? "Syncing..." : "Sync now"}</Button>
             <Button variant="quiet" onClick={() => void disconnect()} disabled={action !== "idle"}>{action === "disconnecting" ? "Disconnecting..." : "Disconnect"}</Button>
+          </div>
+        </div>
+      )}
+
+      {connected && preview && (
+        <div className="canvas-token-panel">
+          <p className="eyebrow">Courses available from Canvas</p>
+          <p>Choose the current courses you want Pathly to use. Historical Canvas courses stay excluded from Study Hub, Today, planning, and notifications.</p>
+          {preview.historical_courses_excluded > 0 && <small>{preview.historical_courses_excluded} past course{preview.historical_courses_excluded === 1 ? "" : "s"} excluded.</small>}
+          {preview.current_courses.map((course) => (
+            <label key={course.id} className="canvas-domain-field">
+              <input type="checkbox" checked={selectedCourseIds.includes(course.id)} onChange={() => toggleCourse(course.id)} disabled={action !== "idle"} />
+              {course.course_code ? `${course.course_code} — ` : ""}{course.course_name}
+            </label>
+          ))}
+          <div className="form-actions">
+            <Button onClick={() => void importSelectedCourses()} disabled={action !== "idle" || !selectedCourseIds.length}>{action === "syncing" ? "Importing..." : "Import selected courses"}</Button>
+            <Button variant="quiet" onClick={() => setPreview(null)} disabled={action !== "idle"}>Cancel</Button>
           </div>
         </div>
       )}
@@ -386,6 +438,7 @@ function CanvasConnectionCard({
         </form>
       )}
 
+      {connected && <p className="review-note">Pathly currently supports one Canvas connection. Keep this connection, or disconnect it before connecting another school.</p>}
       {connected && connection?.auth_type === "personal_access_token" && <p className="review-note">Disconnecting removes the stored token from Pathly. You can also revoke it from Canvas Account Settings.</p>}
       {message && <p className="save-success" role="status">{message}</p>}
       {error && <p className="form-message" role="alert">{error}</p>}
