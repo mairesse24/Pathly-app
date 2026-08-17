@@ -60,7 +60,15 @@ export async function startCanvasConnection(canvasBaseUrl: string) {
 export async function syncCanvas() {
   const { data, error } = await supabase.functions.invoke("canvas-sync", { body: {} })
   if (error || data?.error) throw new Error(data?.message || canvasUnavailableMessage)
-  return data as { synced_at: string; courses_imported: number; assignments_imported: number }
+  return data as {
+    synced_at: string
+    courses_seen: number
+    courses_created: number
+    courses_updated: number
+    assignments_seen: number
+    assignments_created: number
+    assignments_updated: number
+  }
 }
 
 export async function connectCanvasWithToken(canvasBaseUrl: string, accessToken: string) {

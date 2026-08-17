@@ -255,7 +255,7 @@ function CanvasConnectionCard({
       const result = await syncCanvas()
       await Promise.all([load(), onSynced()])
       setMessage(
-        `Canvas synced. ${result.courses_imported} new course${result.courses_imported === 1 ? "" : "s"} and ${result.assignments_imported} new assignment${result.assignments_imported === 1 ? "" : "s"} imported.`,
+        `Canvas synced successfully. ${result.courses_seen} course${result.courses_seen === 1 ? "" : "s"} · ${result.assignments_seen} assignment${result.assignments_seen === 1 ? "" : "s"} updated. ${result.courses_created} new course${result.courses_created === 1 ? "" : "s"} and ${result.assignments_created} new assignment${result.assignments_created === 1 ? "" : "s"} added.`,
       )
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : canvasUnavailableMessage)
@@ -345,28 +345,26 @@ function CanvasConnectionCard({
       )}
 
       {connected && connection && (
-        <div className="canvas-connection-details">
-          <strong>{connection.canvas_base_url}</strong>
+        <div className="canvas-connected-state">
+          <div className="canvas-connection-details">
+          <strong>Connected to {canvasDisplayName(connection.canvas_base_url)}</strong>
+          <small>{connection.canvas_base_url}</small>
           <small>
             {connection.auth_type === "personal_access_token" ? "Connected with an access token · " : ""}
             {connection.last_synced_at
-              ? `Last synced ${formatInstant(connection.last_synced_at, timezone, { dateStyle: "medium", timeStyle: "short" })}`
-              : "Not synced yet"}
+              ? `Last synced: ${formatInstant(connection.last_synced_at, timezone, { dateStyle: "medium", timeStyle: "short" })}`
+              : "Last synced: Never"}
           </small>
+          </div>
+          <div className="form-actions canvas-sync-actions">
+            <Button onClick={() => void sync()} disabled={action !== "idle"}>{action === "syncing" ? "Syncing..." : "Sync now"}</Button>
+            <Button variant="quiet" onClick={() => void disconnect()} disabled={action !== "idle"}>{action === "disconnecting" ? "Disconnecting..." : "Disconnect"}</Button>
+          </div>
         </div>
       )}
 
       <div className="form-actions">
-        {connected ? (
-          <>
-            <Button onClick={() => void sync()} disabled={action !== "idle"}>
-              {action === "syncing" ? "Syncing…" : "Sync now"}
-            </Button>
-            <Button variant="quiet" onClick={() => void disconnect()} disabled={action !== "idle"}>
-              {action === "disconnecting" ? "Disconnecting…" : "Disconnect"}
-            </Button>
-          </>
-        ) : <>
+        {!connected && <>
           <Button onClick={() => void connect()} disabled={action !== "idle" || !domain.trim()}>
             {action === "connecting" ? "Connecting…" : "Connect Canvas"}
           </Button>
@@ -393,6 +391,13 @@ function CanvasConnectionCard({
       {error && <p className="form-message" role="alert">{error}</p>}
     </Card>
   )
+}
+
+function canvasDisplayName(value: string) {
+  try {
+    const school = new URL(value).hostname.split(".")[0]
+    return `${school.toUpperCase()} Canvas`
+  } catch { return "Canvas" }
 }
 
 function formatGraduation(profile: ProfileMetadata | null) {

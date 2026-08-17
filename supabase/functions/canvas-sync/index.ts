@@ -69,7 +69,10 @@ Deno.serve(async (req) => {
     if (coursesError) throw coursesError
     const courseMap = new Map<string, string>()
     let coursesImported = 0
+    let coursesUpdated = 0
     let assignmentsImported = 0
+    let assignmentsUpdated = 0
+    let assignmentsSeen = 0
     for (const canvasCourse of canvasCourses) {
       const externalId = String(canvasCourse.id)
       let existing = existingCourses.find((course: any) =>
@@ -99,6 +102,7 @@ Deno.serve(async (req) => {
           .update(updates).eq("id", existing.id).eq("user_id", user.id).select("id").single()
         if (updateError) throw updateError
         pathlyCourseId = updated.id
+        coursesUpdated += 1
       } else {
         const { data: created, error: createError } = await admin.from("courses").insert({
           user_id: user.id,
@@ -150,6 +154,7 @@ Deno.serve(async (req) => {
         .eq("canvas_course_id", externalId)
       if (assignmentsError) throw assignmentsError
       for (const canvasAssignment of canvasAssignments) {
+        assignmentsSeen += 1
         const assignmentId = String(canvasAssignment.id)
         const canonicalStatus = submissionStatus(submissionByAssignment.get(assignmentId))
         const appliedStatus = assignmentStatus(canonicalStatus)
@@ -176,6 +181,7 @@ Deno.serve(async (req) => {
           const { error: updateError } = await admin.from("assignments").update(updates)
             .eq("id", existingAssignment.id).eq("user_id", user.id)
           if (updateError) throw updateError
+          assignmentsUpdated += 1
         } else {
           const { error: insertError } = await admin.from("assignments").insert({
             user_id: user.id,
@@ -206,7 +212,15 @@ Deno.serve(async (req) => {
     const syncedAt = new Date().toISOString()
     await admin.from("canvas_connections").update({ last_synced_at: syncedAt, updated_at: syncedAt })
       .eq("id", connection.id).eq("user_id", user.id)
-    return respond({ synced_at: syncedAt, courses_imported: coursesImported, assignments_imported: assignmentsImported })
+    return respond({
+      synced_at: syncedAt,
+      courses_seen: canvasCourses.length,
+      courses_created: coursesImported,
+      courses_updated: coursesUpdated,
+      assignments_seen: assignmentsSeen,
+      assignments_created: assignmentsImported,
+      assignments_updated: assignmentsUpdated,
+    })
   } catch (error) {
     console.error("Canvas sync failed", error)
     const code = error instanceof Error ? error.message : "sync_failed"
