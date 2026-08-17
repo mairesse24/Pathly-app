@@ -466,6 +466,8 @@ export function UploadCenterPage() {
                   {result && (
                     <ProcessingReview
                       record={result}
+                      upload={row}
+                      onCourseChanged={(courseId)=>setFiles(current=>current.map(item=>item.id===row.id?{...item,course_id:courseId}:item))}
                       onApproved={(approved, sourceDeleted) => {
                         if (sourceDeleted) {
                           setResults((current) => current.filter((item) => item.id !== approved.id))

@@ -88,6 +88,12 @@ export async function deleteUpload(row: UploadedFileRecord) {
   if (error) throw error
 }
 
+export async function reassociateUploadCourse(uploadId:string,courseId:string){
+  const {data,error}=await supabase.from("uploaded_files").update({course_id:courseId}).eq("id",uploadId).select().single()
+  if(error)throw error
+  return data as UploadedFileRecord
+}
+
 export async function downloadUpload(row: UploadedFileRecord) {
   const { data, error } = await supabase.storage.from(SOURCE_BUCKET).download(row.storage_path)
   if (error) throw error

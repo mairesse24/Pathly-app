@@ -3,21 +3,31 @@ import { Button } from "../ui/Button"
 import { Card } from "../ui/Card"
 import { approveSyllabus, confirmAcademicRecord, confirmDegreeAudit } from "../../services/processing"
 import type { AcademicRecordResult, DegreeAuditResult, LectureResult, ProcessingResultRecord, SyllabusResult } from "../../types/uploads"
+import type { UploadedFileRecord } from "../../types/uploads"
+import { useAcademicData } from "../../context/AcademicDataContext"
+import { reassociateUploadCourse } from "../../services/uploads"
 
-export function ProcessingReview({ record, onApproved }: { record: ProcessingResultRecord; onApproved: (row: ProcessingResultRecord, sourceDeleted?: boolean) => void }) {
+export function ProcessingReview({ record, upload, onApproved, onCourseChanged }: { record: ProcessingResultRecord; upload: UploadedFileRecord; onApproved: (row: ProcessingResultRecord, sourceDeleted?: boolean) => void; onCourseChanged?:(courseId:string)=>void }) {
   if (record.kind === "degree_audit") return <DegreeAuditReview record={record} onApproved={onApproved}/>
   if (record.kind === "unofficial_transcript") return <AcademicRecordReview record={record} onApproved={onApproved}/>
-  if (record.kind === "lecture") {
-    const result = record.result as LectureResult
-    return <Card className="processing-review"><p className="eyebrow">Study materials</p><h3>{result.title}</h3>
-      <h4>Summary</h4><p>{result.summary}</p>
-      <h4>Key concepts</h4><ul>{result.key_concepts.map((concept) => <li key={concept}>{concept}</li>)}</ul>
-      <h4>Flashcards</h4><dl>{result.flashcards.map((item) => <div key={item.front}><dt>{item.front}</dt><dd>{item.back}</dd></div>)}</dl>
-      <h4>Practice questions</h4><ol>{result.practice_questions.map((question) => <li key={question}>{question}</li>)}</ol>
-      <h4>Topics worth reviewing</h4><ul>{result.topics_worth_reviewing.map((topic) => <li key={topic}>{topic}</li>)}</ul>
-    </Card>
-  }
-  return <SyllabusReview record={record} onApproved={onApproved}/>
+  if (record.kind === "lecture") return <LectureStudyView result={record.result as LectureResult}/>
+  return <NewSyllabusReview record={record} upload={upload} onApproved={onApproved} onCourseChanged={onCourseChanged}/>
+}
+
+function LectureStudyView({result}:{result:LectureResult}) {
+  const [summaryOpen,setSummaryOpen]=useState(false),[cardIndex,setCardIndex]=useState(0),[revealed,setRevealed]=useState(false)
+  const summaryLong=result.summary.length>420,preview=summaryLong?`${result.summary.slice(0,360).trim()}…`:result.summary
+  const words=[result.summary,...result.key_concepts,...result.practice_questions].join(" ").trim().split(/\s+/).filter(Boolean).length
+  const reviewMinutes=Math.max(1,Math.ceil(words/180)+Math.ceil(result.flashcards.length/3))
+  const card=result.flashcards[cardIndex]
+  function move(direction:number){setCardIndex(current=>(current+direction+result.flashcards.length)%result.flashcards.length);setRevealed(false)}
+  return <Card className="processing-review lecture-study-view"><div className="study-view-header"><div><p className="eyebrow">Study materials</p><h3>{result.title}</h3></div><div className="study-metadata"><span>{result.key_concepts.length} concepts</span><span>{result.flashcards.length} flashcards</span><span>{result.practice_questions.length} practice questions</span><span>About {reviewMinutes} min</span></div></div>
+    <section className="quick-summary"><h4>Quick summary</h4><p>{summaryOpen?result.summary:preview}</p>{summaryLong&&<button className="text-button" aria-expanded={summaryOpen} onClick={()=>setSummaryOpen(!summaryOpen)}>{summaryOpen?"Show less":"Read full summary"}</button>}</section>
+    <section><h4>Key concepts</h4><div className="concept-list">{result.key_concepts.map(concept=><span key={concept}>{concept}</span>)}</div></section>
+    <section className="flashcard-section"><div className="study-section-heading"><h4>Flashcards</h4>{result.flashcards.length>0&&<span>{cardIndex+1} / {result.flashcards.length}</span>}</div>{card?<div className="flashcard" tabIndex={0} onKeyDown={event=>{if(event.key==="ArrowLeft")move(-1);if(event.key==="ArrowRight")move(1);if(event.key==="Enter"||event.key===" "){event.preventDefault();setRevealed(value=>!value)}}}><strong>{card.front}</strong>{revealed?<div className="flashcard-answer"><small>Answer</small><p>{card.back}</p></div>:<Button variant="secondary" onClick={()=>setRevealed(true)}>Reveal answer</Button>}<div className="flashcard-actions"><Button variant="quiet" disabled={result.flashcards.length<2} onClick={()=>move(-1)}>Previous</Button>{revealed&&<Button variant="quiet" onClick={()=>setRevealed(false)}>Hide answer</Button>}<Button variant="quiet" disabled={result.flashcards.length<2} onClick={()=>move(1)}>Next</Button></div></div>:<p>No flashcards were identified.</p>}</section>
+    <details className="study-details"><summary>Practice questions ({result.practice_questions.length})</summary><ol>{result.practice_questions.map(question=><li key={question}>{question}</li>)}</ol></details>
+    <details className="study-details"><summary>Topics worth reviewing ({result.topics_worth_reviewing.length})</summary><ul>{result.topics_worth_reviewing.map(topic=><li key={topic}>{topic}</li>)}</ul></details>
+  </Card>
 }
 
 function DegreeAuditReview({ record, onApproved }: { record: ProcessingResultRecord; onApproved: (row: ProcessingResultRecord, sourceDeleted?: boolean) => void }) {
@@ -77,7 +87,7 @@ function SyllabusReview({ record, onApproved }: { record: ProcessingResultRecord
   async function approve() {
     setSaving(true); setMessage("")
     try {
-      const row = await approveSyllabus({ processing: record, result, assignmentIndexes, examIndexes })
+      const row = await approveSyllabus({ processing: record, result, assignmentIndexes, examIndexes, courseId: record.course_id || "" })
       onApproved(row)
     } catch (reason) {
       setMessage(reason instanceof Error ? reason.message : "Unable to save reviewed items.")
@@ -98,5 +108,30 @@ function SyllabusReview({ record, onApproved }: { record: ProcessingResultRecord
     </div>) : <p>No exams found.</p>}
     <Button disabled={saving || selectedCount === 0} onClick={() => void approve()}>{saving ? "Saving…" : `Save ${selectedCount} reviewed item${selectedCount === 1 ? "" : "s"}`}</Button>
     {message && <p className="form-message" role="alert">{message}</p>}
+  </Card>
+}
+
+function NewSyllabusReview({record,upload,onApproved,onCourseChanged}:{record:ProcessingResultRecord;upload:UploadedFileRecord;onApproved:(row:ProcessingResultRecord)=>void;onCourseChanged?:(courseId:string)=>void}){
+  const {courses,addCourse}=useAcademicData(),initial=record.result as SyllabusResult
+  const [result,setResult]=useState(()=>structuredClone(initial)),[assignmentIndexes,setAssignmentIndexes]=useState(()=>initial.assignments.map((_,i)=>i)),[examIndexes,setExamIndexes]=useState(()=>initial.exams.map((_,i)=>i))
+  const [saving,setSaving]=useState(false),[message,setMessage]=useState(""),[courseId,setCourseId]=useState(upload.course_id||record.course_id||""),[identityConfirmed,setIdentityConfirmed]=useState(false),[cancelled,setCancelled]=useState(false)
+  const selectedAssignments=useMemo(()=>new Set(assignmentIndexes),[assignmentIndexes]),selectedExams=useMemo(()=>new Set(examIndexes),[examIndexes]),selectedCount=assignmentIndexes.length+examIndexes.length
+  const normalize=(value:string|null|undefined)=>value?.trim().toUpperCase().replace(/[^A-Z0-9]/g,"")||"",selectedCourse=courses.find(course=>course.id===courseId)
+  const documentCode=initial.course_code||null,documentTitle=initial.course_title||null
+  const identifiedCourse=courses.find(course=>documentCode?normalize(course.course_code)===normalize(documentCode):documentTitle?course.course_name.trim().toLowerCase()===documentTitle.trim().toLowerCase():false)
+  const titleMatch=Boolean(!documentCode&&documentTitle&&selectedCourse&&documentTitle.trim().toLowerCase()===selectedCourse.course_name.trim().toLowerCase())
+  const explicitMatch=Boolean((documentCode&&selectedCourse&&normalize(documentCode)===normalize(selectedCourse.course_code))||titleMatch),mismatch=Boolean(documentCode&&selectedCourse&&!explicitMatch)
+  const toggle=(index:number,current:number[],set:(value:number[])=>void)=>set(current.includes(index)?current.filter(value=>value!==index):[...current,index])
+  async function move(targetId:string){setMessage("");try{await reassociateUploadCourse(upload.id,targetId);setCourseId(targetId);setIdentityConfirmed(true);onCourseChanged?.(targetId)}catch(reason){setMessage(reason instanceof Error?reason.message:"Unable to move this syllabus.")}}
+  async function createIdentifiedCourse(){if(!documentCode)return;if(!window.confirm(`Add ${documentCode}${documentTitle?` — ${documentTitle}`:""} to your Pathly courses?`))return;try{const created=await addCourse({course_code:documentCode,course_name:documentTitle||documentCode});await move(created.id)}catch(reason){setMessage(reason instanceof Error?reason.message:"Unable to add this course.")}}
+  async function approve(){setSaving(true);setMessage("");try{if(!courseId||(!explicitMatch&&!identityConfirmed))throw new Error("Confirm the syllabus course before adding items.");const row=await approveSyllabus({processing:record,result,assignmentIndexes,examIndexes,courseId});onApproved(row)}catch(reason){setMessage(reason instanceof Error?reason.message:"Unable to save reviewed items.")}finally{setSaving(false)}}
+  if(record.status==="approved")return <Card className="processing-review"><p className="save-success">Reviewed syllabus items were saved. Reopening this result will not create duplicates.</p></Card>
+  if(cancelled)return <Card className="processing-review"><p className="eyebrow">Syllabus review paused</p><h3>Nothing was added.</h3><p>Your original file and extracted candidates remain available.</p><Button variant="secondary" onClick={()=>setCancelled(false)}>Return to review</Button></Card>
+  return <Card className="processing-review"><p className="eyebrow">Syllabus review required</p><h3>{selectedCount} items found</h3>
+    {explicitMatch?<p className="course-match-note">Course matched: <strong>{selectedCourse?.course_code}</strong></p>:mismatch?<div className="course-mismatch" role="alert"><h4>This syllabus may belong to a different course.</h4><p>You uploaded this under {selectedCourse?.course_code}, but the document appears to be for {documentCode}{documentTitle?` — ${documentTitle}`:""}.</p><div className="form-actions">{identifiedCourse?<Button onClick={()=>void move(identifiedCourse.id)}>Move to {identifiedCourse.course_code}</Button>:<Button onClick={()=>void createIdentifiedCourse()}>Add this course</Button>}<Button variant="secondary" onClick={()=>setIdentityConfirmed(true)}>Keep under {selectedCourse?.course_code} anyway</Button><Button variant="quiet" onClick={()=>setCancelled(true)}>Cancel</Button></div></div>:<div className="course-unknown"><h4>We couldn't confidently identify the course from this syllabus.</h4><label>Use Pathly course<select value={courseId} onChange={event=>{setCourseId(event.target.value);setIdentityConfirmed(false)}}><option value="">Choose a course</option>{courses.map(course=><option key={course.id} value={course.id}>{course.course_code} — {course.course_name}</option>)}</select></label><div className="form-actions"><Button disabled={!courseId} onClick={()=>void move(courseId)}>Confirm selected course</Button><Button variant="quiet" onClick={()=>setCancelled(true)}>Cancel</Button></div></div>}
+    <p>{result.course_summary}</p><p className="review-note">Select only accurate items. Edit titles and dates before adding them to the course and calendar.</p>
+    <h4>Assignments</h4>{result.assignments.length?result.assignments.map((item,index)=><div className="review-item" key={`assignment-${index}`}><input aria-label={`Include assignment ${item.title}`} type="checkbox" checked={selectedAssignments.has(index)} onChange={()=>toggle(index,assignmentIndexes,setAssignmentIndexes)}/><label>Type<select value="assignment" disabled><option>Assignment</option></select></label><label>Title<input value={item.title} onChange={event=>setResult(current=>({...current,assignments:current.assignments.map((value,i)=>i===index?{...value,title:event.target.value}:value)}))}/></label><label>Due date and time<input type="datetime-local" value={item.due_at?.slice(0,16)??""} onChange={event=>setResult(current=>({...current,assignments:current.assignments.map((value,i)=>i===index?{...value,due_at:event.target.value||null}:value)}))}/></label></div>):<p>No assignments found.</p>}
+    <h4>Exams</h4>{result.exams.length?result.exams.map((item,index)=><div className="review-item" key={`exam-${index}`}><input aria-label={`Include exam ${item.title}`} type="checkbox" checked={selectedExams.has(index)} onChange={()=>toggle(index,examIndexes,setExamIndexes)}/><label>Type<select value="exam" disabled><option>Exam</option></select></label><label>Title<input value={item.title} onChange={event=>setResult(current=>({...current,exams:current.exams.map((value,i)=>i===index?{...value,title:event.target.value}:value)}))}/></label><label>Exam date and time<input type="datetime-local" value={item.exam_at?.slice(0,16)??""} onChange={event=>setResult(current=>({...current,exams:current.exams.map((value,i)=>i===index?{...value,exam_at:event.target.value||null}:value)}))}/></label></div>):<p>No exams found.</p>}
+    <Button disabled={saving||selectedCount===0||(!explicitMatch&&!identityConfirmed)} onClick={()=>void approve()}>{saving?"Saving…":`Add ${selectedCount} selected item${selectedCount===1?"":"s"}`}</Button>{message&&<p className="form-message" role="alert">{message}</p>}
   </Card>
 }

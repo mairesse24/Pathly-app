@@ -52,7 +52,9 @@ type Value = {
 
   addCourse: (
     v: Pick<CourseRecord, "course_code" | "course_name">,
-  ) => Promise<void>
+  ) => Promise<CourseRecord>
+  updateCourse: (id:string,v:Pick<CourseRecord,"course_code"|"course_name">)=>Promise<CourseRecord>
+  removeCourse: (id:string)=>Promise<void>
 
   setAssignmentStatus: (
     id: string,
@@ -152,7 +154,7 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
   async function addCourse(
     v: Pick<CourseRecord, "course_code" | "course_name">,
   ) {
-    if (!user) return
+    if (!user) throw new Error("You must be signed in to add a course")
 
     const row = await courseService.createCourse({
       user_id: user.id,
@@ -175,7 +177,11 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
     })
 
     setCourses((x) => [...x, row])
+    return row
   }
+
+  async function updateCourse(id:string,v:Pick<CourseRecord,"course_code"|"course_name">){const row=await courseService.updateCourse(id,v);setCourses(current=>current.map(course=>course.id===id?row:course));return row}
+  async function removeCourse(id:string){await courseService.deleteCourseSafely(id);setCourses(current=>current.filter(course=>course.id!==id))}
 
   async function setAssignmentStatus(
     id: string,
@@ -228,6 +234,8 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
         refreshAcademicData: load,
 
         addCourse,
+        updateCourse,
+        removeCourse,
 
         setAssignmentStatus,
 

@@ -39,7 +39,7 @@ function validateResult(kind: string, value: unknown) {
   if (!value || typeof value !== "object") throw new Error("Structured result is not an object.")
   const result = value as Record<string, unknown>
   if (kind === "syllabus") {
-    if (typeof result.course_summary !== "string" || !Array.isArray(result.assignments) || !Array.isArray(result.exams)) throw new Error("Syllabus result failed validation.")
+    if (!((typeof result.course_code === "string" || result.course_code === null) && (typeof result.course_title === "string" || result.course_title === null)) || typeof result.course_summary !== "string" || !Array.isArray(result.assignments) || !Array.isArray(result.exams)) throw new Error("Syllabus result failed validation.")
   } else if (kind === "lecture" && (typeof result.title !== "string" || typeof result.summary !== "string" || !Array.isArray(result.key_concepts) || !Array.isArray(result.flashcards) || !Array.isArray(result.practice_questions) || !Array.isArray(result.topics_worth_reviewing))) {
     throw new Error("Lecture result failed validation.")
   } else if (kind === "degree_audit" && (!Array.isArray(result.courses) || !Array.isArray(result.requirements))) {
@@ -110,7 +110,7 @@ Deno.serve(async (req: Request) => {
 
     await updateState({ processing_stage: "creating" })
     const instruction = upload.category === "syllabus"
-      ? "Extract only explicit syllabus facts. Use ISO 8601 with an offset when a time zone is stated; otherwise use null for uncertain dates. Never invent dates. Return assignments and exams for student review."
+      ? "Extract only explicit syllabus facts. Extract course_code and course_title only when clearly printed in the document; otherwise return null. Preserve the explicit course code exactly enough for deterministic comparison. Use ISO 8601 with an offset when a time zone is stated; otherwise use null for uncertain dates. Never invent dates. Return assignments and exams for student review."
       : upload.category === "lecture"
         ? "Create faithful study materials from this lecture. Include a concise summary, key concepts, useful flashcards, practice questions, and topics worth reviewing. Do not add facts absent from the source."
         : upload.category === "degree_audit"

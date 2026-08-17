@@ -23,6 +23,8 @@ export type UploadedFileRecord = {
 }
 
 export type SyllabusResult = {
+  course_code: string | null
+  course_title: string | null
   course_summary: string
   assignments: Array<{ title: string; description: string | null; due_at: string | null; estimated_minutes: number | null }>
   exams: Array<{ title: string; exam_at: string | null; location: string | null; topics_summary: string | null }>
