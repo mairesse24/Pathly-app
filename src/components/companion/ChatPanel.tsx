@@ -110,10 +110,19 @@ export function ChatPanel() {
     }
   }
 
+  const lastResponse = [...messages].reverse().find((item) => item.role === "assistant")
+  const followUps = !lastResponse
+    ? prompts
+    : /degree|requirement|credit|graduat/i.test(lastResponse.content)
+      ? ["Help me plan next semester", "What requirements need review?"]
+      : lastResponse.sources?.some((source) => source.type === "lecture" || source.type === "note")
+        ? ["Quiz me on this", "Make a study plan"]
+        : ["What should I focus on next?", "Help me make a study plan"]
+
   return (
     <section className="card chat-card">
       <div className="chat-toolbar">
-        <button className="chat-history-toggle" onClick={() => setHistoryOpen((open) => !open)} aria-expanded={historyOpen}>Conversations</button>
+        <button className="chat-history-toggle" onClick={() => setHistoryOpen((open) => !open)} aria-expanded={historyOpen}>Chats</button>
         <button className="chat-new" onClick={newChat} disabled={sending}>+ New chat</button>
       </div>
       <div className="chat-layout">
@@ -133,7 +142,7 @@ export function ChatPanel() {
             {messages.map((item) => <div className={`message ${item.role === "user" ? "from-user" : "from-pathly"}`} key={item.id}><div className="message-label">{item.role === "user" ? "You" : "Pathly"}</div><p>{item.content}</p>{!!item.sources?.length && <div className="message-sources"><strong>Sources</strong>{item.sources.map((source) => <span key={`${item.id}-${source.label}`}>{source.label}</span>)}</div>}{!!item.metadata?.things_to_double_check?.length && <div className="double-check"><strong>Things to double-check</strong><ul>{item.metadata.things_to_double_check.map((check) => <li key={check}>{check}</li>)}</ul></div>}</div>)}
             {sending && <p className="chat-status">Pathly is reviewing the relevant details...</p>}
           </div>
-          <div className="suggestions">{prompts.map((prompt) => <button disabled={sending} key={prompt} onClick={() => setMessage(prompt)}>{prompt}</button>)}</div>
+          <div className="suggestions">{followUps.map((prompt) => <button disabled={sending} key={prompt} onClick={() => setMessage(prompt)}>{prompt}</button>)}</div>
           {error && <p className="chat-error" role="alert">{error}</p>}
           <div className="chat-input"><input maxLength={2000} value={message} disabled={loading || sending} onChange={(event) => setMessage(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void send() } }} placeholder="Ask Pathly about your studies..." aria-label="Message Pathly Companion" /><button disabled={loading || sending || !message.trim()} onClick={() => void send()} aria-label="Send message"><Icon name="send" /></button></div>
         </div>
