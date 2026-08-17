@@ -62,6 +62,7 @@ export function UploadCenterPage() {
   const [params] = useSearchParams()
 
   const requested = params.get("category") as UploadCategory | null
+  const requestedFile = params.get("file")
 
   const [category, setCategory] = useState<UploadCategory>(
     requested && labels[requested] ? requested : "syllabus",
@@ -106,6 +107,11 @@ export function UploadCenterPage() {
       block: "center",
     })
   }, [latestUploadedId])
+
+  useEffect(() => {
+    if (!requestedFile || !files.some((item) => item.id === requestedFile)) return
+    document.getElementById(`upload-${requestedFile}`)?.scrollIntoView({ behavior: "smooth", block: "center" })
+  }, [files, requestedFile])
 
   const sensitive =
     category === "degree_audit" || category === "unofficial_transcript"

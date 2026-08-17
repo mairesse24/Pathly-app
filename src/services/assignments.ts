@@ -30,3 +30,4 @@ export async function updateAssignment(
   if (error) throw error
   return data as AssignmentRecord
 }
+export async function deleteAssignment(id: string) { const { error } = await supabase.from("assignments").delete().eq("id", id); if (error) throw error }

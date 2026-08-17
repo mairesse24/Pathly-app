@@ -79,6 +79,7 @@ export function DashboardPage() {
     <>
       <PageHeader
         title={`${dayGreeting(timezone)}, ${profile?.display_name.split(/\s+/)[0] || "student"}.`}
+        materialContext={{origin:"dashboard"}}
       />
       <main className="page dashboard">
         <div className="welcome">

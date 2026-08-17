@@ -26,7 +26,7 @@ export function StudyHubPage() {
   }
   return (
     <>
-      <PageHeader title="Study hub" />
+      <PageHeader title="Study hub" materialContext={{origin:"study"}} />
       <main className="page">
         <div className="intro-row">
           <div>

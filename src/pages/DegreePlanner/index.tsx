@@ -20,6 +20,8 @@ export function DegreePlannerPage() {
   const [groups, setGroups] = useState<RequirementGroup[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [auditError, setAuditError] = useState("")
+  const [requirementsError, setRequirementsError] = useState("")
   const [form, setForm] = useState<CourseInput>(empty)
   const [editing, setEditing] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -28,19 +30,27 @@ export function DegreePlannerPage() {
     if (profileLoading) return
     setLoading(true)
     setError("")
+    setAuditError("")
+    setRequirementsError("")
     try {
-      const [items, match, confirmedAudit] = await Promise.all([
+      const [courseResult, matchResult, auditResult] = await Promise.allSettled([
         listCompletedCourses(),
         matchVerifiedProgram(profile?.university, profile?.major, profile?.catalog_year),
         getActiveUserDegreePlan(),
       ])
-      setCourses(items)
-      setProgramMatch(match)
-      setProgram(match.program)
-      setAuditPlan(confirmedAudit)
-      setGroups(match.program ? await getRequirementGroups(match.program.id) : [])
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Unable to load your degree plan.")
+      if (courseResult.status === "fulfilled") setCourses(courseResult.value)
+      else setError("Your completed coursework could not be loaded. Try refreshing this page.")
+      if (matchResult.status === "fulfilled") {
+        const match = matchResult.value
+        setProgramMatch(match)
+        setProgram(match.program)
+        if (match.program) {
+          try { setGroups(await getRequirementGroups(match.program.id)) }
+          catch { setGroups([]); setRequirementsError("Verified requirement details are temporarily unavailable. Your completed courses are still shown below.") }
+        } else setGroups([])
+      } else setRequirementsError("Pathly could not check verified program requirements right now. Your completed courses are still available below.")
+      if (auditResult.status === "fulfilled") setAuditPlan(auditResult.value)
+      else setAuditError("Your supplemental degree audit could not be loaded. Verified progress remains available.")
     } finally {
       setLoading(false)
     }
@@ -76,8 +86,10 @@ export function DegreePlannerPage() {
     setForm({ course_code: course.course_code, course_title: course.course_title, credit_hours: Number(course.credit_hours), term: course.term, year: course.year, status: course.status })
   }
 
-  return <><PageHeader title="Degree plan"/><main className="page degree-planner-page">
+  return <><PageHeader title="Degree plan" materialContext={{origin:"degree"}}/><main className="page degree-planner-page">
     <div className="intro-row"><div><h2>Build an accurate degree plan.</h2><p>Progress uses requirements Pathly has reviewed from an official source or a degree audit you personally confirmed.</p></div></div>
+    {requirementsError && <p className="form-message section-error" role="alert">{requirementsError}</p>}
+    {auditError && <p className="form-message section-error" role="alert">{auditError}</p>}
     <Card className="degree-metadata"><p className="eyebrow">Program information</p><h3>{profile?.major || "Major not added"}</h3><p>{profile?.university || "University not added"}{profile?.catalog_year ? ` · ${formatCatalogYear(profile.catalog_year)} catalog` : ""}</p>{(profile?.graduation_year || profile?.expected_graduation_term) && <p>Expected graduation: {[profile.expected_graduation_term, profile.graduation_year].filter(Boolean).join(" ")} (provided by you; not a Pathly prediction)</p>}<Button variant="secondary" onClick={() => navigate("/settings")}>Edit in Settings</Button></Card>
     {loading ? <Card><p>Loading your academic record…</p></Card> : program && progress ? <>
       <Card className="degree-progress-card"><p className="eyebrow">Verified program requirements</p><h2>{progress.completedCredits} of {program.total_credits_required} credits confirmed</h2><p>{program.university} · {program.major} · {formatCatalogYear(program.catalog_year)}</p><div className="wide-progress" aria-label={`${progress.percent}% complete`}><i style={{width:`${progress.percent}%`}}/></div><strong>{progress.percent}% complete</strong>{progress.inProgressCredits > 0 && <p>In progress: {progress.inProgressCredits} credits (not counted as completed)</p>}<small>Based on verified requirements: <a href={program.source_url} target="_blank" rel="noreferrer">{program.source_title}</a></small></Card>

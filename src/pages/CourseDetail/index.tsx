@@ -18,6 +18,7 @@ import {
 
 import type { UploadedFileRecord } from "../../types/uploads"
 import { formatInstant } from "../../utils/dateTime"
+import { AddMaterialDialog } from "../../components/uploads/AddMaterialDialog"
 
 export function CourseDetailPage() {
   const { profile } = useProfile()
@@ -31,6 +32,7 @@ export function CourseDetailPage() {
   const [files, setFiles] = useState<UploadedFileRecord[]>([])
 
   const [fileError, setFileError] = useState("")
+  const [materialOpen, setMaterialOpen] = useState(false)
 
   useEffect(() => {
     if (!courseId) return
@@ -84,7 +86,7 @@ export function CourseDetailPage() {
 
   return (
     <>
-      <PageHeader title={course.course_code} />
+      <PageHeader title={course.course_code} materialContext={{ origin: "course", courseId: course.id }} onMaterialUploaded={() => void listUploads(course.id).then(setFiles)} />
       <main className="page">
         <div className="intro-row">
           <div>
@@ -166,13 +168,14 @@ export function CourseDetailPage() {
             )}
             <Button
               variant="secondary"
-              onClick={() => navigate("/uploads?category=syllabus")}
+              onClick={() => setMaterialOpen(true)}
             >
               Upload course material
             </Button>
           </Card>
         </div>
       </main>
+      <AddMaterialDialog open={materialOpen} onClose={() => setMaterialOpen(false)} context={{ origin: "course", courseId: course.id }} onUploaded={() => void listUploads(course.id).then(setFiles)} />
     </>
   )
 }

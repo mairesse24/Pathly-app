@@ -1,137 +1,38 @@
+import { useEffect, useMemo, useState, type FormEvent } from "react"
+import { useSearchParams } from "react-router-dom"
 import { PageHeader } from "../../components/layout/PageHeader"
+import { Button } from "../../components/ui/Button"
 import { Card } from "../../components/ui/Card"
+import { Dialog } from "../../components/ui/Dialog"
 import { useAcademicData } from "../../context/AcademicDataContext"
+import { useAuth } from "../../context/AuthContext"
 import { useProfile } from "../../context/ProfileContext"
-import {
-  dateKey,
-  formatDateKey,
-  formatInstant,
-  todayKey,
-  weekKeys,
-} from "../../utils/dateTime"
-type Event = { day: number; title: string; time: string; tone: string }
-export function CalendarPage() {
-  const { courses, assignments, exams, studySessions, loading } =
-    useAcademicData()
-  const { profile } = useProfile()
-  const timezone = profile?.timezone
-  const today = todayKey(timezone)
-  const days = weekKeys(timezone)
-  const dayIndex = (iso: string) => days.indexOf(dateKey(iso, timezone))
-  const course = (id: string | null) =>
-    courses.find((c) => c.id === id)?.course_code ?? "Course"
-  const eventTime = (value: string) =>
-    formatInstant(value, timezone, { hour: "numeric", minute: "2-digit" })
-  const events: Event[] = [
-    ...assignments
-      .filter((a) => a.due_at && a.status !== "completed")
-      .map((a) => ({
-        day: dayIndex(a.due_at!),
-        title: `${course(a.course_id)} — ${a.title}`,
-        time: eventTime(a.due_at!),
-        tone: a.status === "overdue" ? "rose" : "gold",
-      })),
-    ...exams
-      .filter((e) => e.exam_at)
-      .map((e) => ({
-        day: dayIndex(e.exam_at!),
-        title: `${course(e.course_id)} — ${e.title}`,
-        time: eventTime(e.exam_at!),
-        tone: "rose",
-      })),
-    ...studySessions.map((s) => ({
-      day: dayIndex(s.start_at),
-      title: s.title,
-      time: eventTime(s.start_at),
-      tone: "sage",
-    })),
-  ]
-  const labels = [
-    "Monday",
-    "Tuesday",
-    "Wednesday",
-    "Thursday",
-    "Friday",
-    "Saturday",
-    "Sunday",
-  ]
-  courses.forEach((c) =>
-    (c.meeting_days ?? []).forEach((name) => {
-      const day = labels.findIndex((label) =>
-        label.toLowerCase().startsWith(name.toLowerCase().slice(0, 3)),
-      )
-      if (day >= 0)
-        events.push({
-          day,
-          title: `${c.course_code} — ${c.course_name}`,
-          time: c.meeting_start?.slice(0, 5) ?? "Class",
-          tone: "blue",
-        })
-    }),
-  )
-  return (
-    <>
-      <PageHeader title="Your week" />
-      <main className="page">
-        <div className="calendar-toolbar">
-          <div>
-            <h2>A week with room to breathe.</h2>
-            <p>
-              {formatDateKey(days[0], { month: "long", day: "numeric" })} –{" "}
-              {formatDateKey(days[6], {
-                month: "long",
-                day: "numeric",
-                year: "numeric",
-              })}
-            </p>
-          </div>
-        </div>
-        <Card className="week-card">
-          <div className="week-grid">
-            {days.map((day, index) => (
-              <div className={`day ${day === today ? "today" : ""}`} key={day}>
-                <b>
-                  {formatDateKey(day, { weekday: "short", day: "numeric" })}
-                </b>
-                <div className="time-label">Schedule</div>
-                {events
-                  .filter((event) => event.day === index)
-                  .map((event, eventIndex) => (
-                    <div
-                      className={`calendar-event ${event.tone}`}
-                      key={`${event.title}-${eventIndex}`}
-                    >
-                      {event.title}
-                      <br />
-                      <small>{event.time}</small>
-                    </div>
-                  ))}
-              </div>
-            ))}
-          </div>
-        </Card>
-        <div className="calendar-bottom">
-          <Card>
-            <p className="eyebrow">This week</p>
-            <h3>
-              {loading
-                ? "Loading…"
-                : `${events.filter((event) => event.day >= 0 && event.day < 7).length} academic commitments`}
-            </h3>
-            <p>
-              Assignments, exams, course meetings, and study sessions stay
-              together here.
-            </p>
-          </Card>
-          <Card>
-            <p className="eyebrow">In-app check-ins</p>
-            <h3>Nothing disappears when it’s late.</h3>
-            <p>
-              Overdue work remains visible until you confirm it is complete.
-            </p>
-          </Card>
-        </div>
-      </main>
-    </>
-  )
+import { createAssignment, deleteAssignment, updateAssignment } from "../../services/assignments"
+import { createExam, deleteExam, updateExam } from "../../services/exams"
+import { createStudySession, deleteStudySession, updateStudySession } from "../../services/studySessions"
+import type { AssignmentRecord, ExamRecord, StudySessionRecord } from "../../types/academic"
+import { dateKey, formatDateKey, formatInstant, todayKey, validTimeZone, weekKeys, zonedDateTimeToIso } from "../../utils/dateTime"
+
+type Kind="assignment"|"exam"|"session"
+type CalendarEvent={id:string;kind:Kind;day:number;title:string;time:string;tone:string;record:AssignmentRecord|ExamRecord|StudySessionRecord;canvasOwned?:boolean}
+const defaultTime="12:00"
+export function CalendarPage(){
+ const [params]=useSearchParams()
+ const {user}=useAuth(); const {profile}=useProfile(); const data=useAcademicData(); const {courses,assignments,exams,studySessions,loading,refreshAcademicData}=data
+ const timezone=profile?.timezone,tz=validTimeZone(timezone),today=todayKey(timezone),days=weekKeys(timezone); const [dialogOpen,setDialogOpen]=useState(false); const [selected,setSelected]=useState<CalendarEvent|null>(null)
+ const [kind,setKind]=useState<Kind>("assignment"),[courseId,setCourseId]=useState(""),[title,setTitle]=useState(""),[date,setDate]=useState(today),[time,setTime]=useState(defaultTime),[endTime,setEndTime]=useState("13:00"),[saving,setSaving]=useState(false),[message,setMessage]=useState("")
+ const course=(id:string|null)=>courses.find(c=>c.id===id)?.course_code??"Course"; const eventTime=(v:string)=>formatInstant(v,timezone,{hour:"numeric",minute:"2-digit"}); const dayIndex=(iso:string)=>days.indexOf(dateKey(iso,timezone))
+ const events=useMemo<CalendarEvent[]>(()=>[
+  ...assignments.filter(a=>a.due_at&&a.status!=="completed").map(a=>({id:a.id,kind:"assignment" as Kind,day:dayIndex(a.due_at!),title:`${course(a.course_id)} — ${a.title}`,time:eventTime(a.due_at!),tone:a.status==="overdue"?"rose":"gold",record:a,canvasOwned:a.source==="canvas"})),
+  ...exams.filter(e=>e.exam_at).map(e=>({id:e.id,kind:"exam" as Kind,day:dayIndex(e.exam_at!),title:`${course(e.course_id)} — ${e.title}`,time:eventTime(e.exam_at!),tone:"rose",record:e})),
+  ...studySessions.map(s=>({id:s.id,kind:"session" as Kind,day:dayIndex(s.start_at),title:s.title,time:eventTime(s.start_at),tone:"sage",record:s})),
+ ],[assignments,exams,studySessions,courses,days.join("|")])
+ useEffect(()=>{const id=params.get("item"),type=params.get("type");if(!id||!type)return;const event=events.find(item=>item.id===id&&item.kind===(type==="session"?"session":type));if(event)openExisting(event)},[events,params])
+ function openNew(day=today){setSelected(null);setKind("assignment");setCourseId("");setTitle("");setDate(day);setTime(defaultTime);setEndTime("13:00");setMessage("");setDialogOpen(true)}
+ function openExisting(event:CalendarEvent){setSelected(event);setKind(event.kind);setTitle("title" in event.record?event.record.title:"");setCourseId(event.record.course_id||"");const iso=event.kind==="assignment"?(event.record as AssignmentRecord).due_at:event.kind==="exam"?(event.record as ExamRecord).exam_at:(event.record as StudySessionRecord).start_at;if(iso){setDate(dateKey(iso,timezone));setTime(new Date(iso).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit",timeZone:tz}))}if(event.kind==="session")setEndTime(new Date((event.record as StudySessionRecord).end_at).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit",timeZone:tz}));setMessage("");setDialogOpen(true)}
+ async function save(e:FormEvent){e.preventDefault();if(!user)return;setSaving(true);setMessage("");try{const start=zonedDateTimeToIso(date,time,timezone);if(kind==="assignment"){if(!courseId)throw new Error("Select a course.");const values={course_id:courseId,title:title.trim(),due_at:start};if(selected)await updateAssignment(selected.id,values);else await createAssignment({user_id:user.id,...values,description:null,estimated_minutes:null,status:"not_started",source:"manual"})}else if(kind==="exam"){if(!courseId)throw new Error("Select a course.");const values={course_id:courseId,title:title.trim(),exam_at:start};if(selected)await updateExam(selected.id,values);else await createExam({user_id:user.id,...values,location:null,topics_summary:null})}else{const end=zonedDateTimeToIso(date,endTime,timezone);if(end<=start)throw new Error("End time must be after the start time.");const values={course_id:courseId||null,title:title.trim(),start_at:start,end_at:end};if(selected)await updateStudySession(selected.id,values);else await createStudySession({user_id:user.id,...values,assignment_id:null,status:"scheduled"})}await refreshAcademicData();setDialogOpen(false)}catch(reason){setMessage(reason instanceof Error?reason.message:"Unable to save this item.")}finally{setSaving(false)}}
+ async function remove(){if(!selected||!window.confirm("Delete this calendar item?"))return;setSaving(true);try{if(selected.kind==="assignment")await deleteAssignment(selected.id);else if(selected.kind==="exam")await deleteExam(selected.id);else await deleteStudySession(selected.id);await refreshAcademicData();setDialogOpen(false)}catch(reason){setMessage(reason instanceof Error?reason.message:"Unable to delete this item.")}finally{setSaving(false)}}
+ const labels=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"] as const; const meetingEvents:{day:number;title:string;time:string;tone:string}[]=[];courses.forEach(c=>(c.meeting_days??[]).forEach(name=>{const day=labels.findIndex(label=>label.toLowerCase().startsWith(name.toLowerCase().slice(0,3)));if(day>=0)meetingEvents.push({day,title:`${c.course_code} — ${c.course_name}`,time:c.meeting_start?.slice(0,5)??"Class",tone:"blue"})}))
+ return <><PageHeader title="Your week"/><main className="page"><div className="calendar-toolbar"><div><h2>A week with room to breathe.</h2><p>{formatDateKey(days[0],{month:"long",day:"numeric"})} – {formatDateKey(days[6],{month:"long",day:"numeric",year:"numeric"})}</p></div><Button onClick={()=>openNew()}>+ Add</Button></div><Card className="week-card"><div className="week-grid">{days.map((day,index)=><div className={`day ${day===today?"today":""}`} key={day}><button className="calendar-day-button" onClick={()=>openNew(day)} aria-label={`Add item on ${formatDateKey(day,{month:"long",day:"numeric"})}`}>{formatDateKey(day,{weekday:"short",day:"numeric"})}</button><div className="time-label">Schedule</div>{events.filter(event=>event.day===index).map(event=><button className={`calendar-event ${event.tone}`} key={`${event.kind}-${event.id}`} onClick={()=>openExisting(event)}>{event.title}<br/><small>{event.time}</small></button>)}{meetingEvents.filter(event=>event.day===index).map((event,i)=><div className={`calendar-event ${event.tone}`} key={`meeting-${i}`}>{event.title}<br/><small>{event.time}</small></div>)}</div>)}</div></Card><div className="calendar-bottom"><Card><p className="eyebrow">This week</p><h3>{loading?"Loading…":`${events.filter(event=>event.day>=0&&event.day<7).length+meetingEvents.length} academic commitments`}</h3><p>Assignments, exams, course meetings, and study sessions stay together here.</p></Card><Card><p className="eyebrow">In-app check-ins</p><h3>Nothing disappears when it’s late.</h3><p>Overdue work remains visible until you confirm it is complete.</p></Card></div></main>
+ <Dialog open={dialogOpen} onClose={()=>setDialogOpen(false)} title={selected?"Calendar item":"Add to calendar"}>{selected?.canvasOwned?<div><p><strong>{selected.title}</strong></p><p>{selected.time}</p><p>This assignment is managed by Canvas. Edit it in Canvas so synced source data stays accurate.</p><div className="dialog-actions"><Button onClick={()=>setDialogOpen(false)}>Close</Button></div></div>:<form className="dialog-form" onSubmit={save}><label>Item type<select value={kind} disabled={!!selected} onChange={e=>setKind(e.target.value as Kind)}><option value="assignment">Assignment</option><option value="exam">Exam</option><option value="session">Study session</option></select></label><label>Course {kind==="session"&&"(optional)"}<select value={courseId} onChange={e=>setCourseId(e.target.value)}><option value="">{kind==="session"?"No course":"Select a course"}</option>{courses.map(c=><option key={c.id} value={c.id}>{c.course_code} — {c.course_name}</option>)}</select></label><label>{kind==="session"?"Title or topic":"Title"}<input required value={title} onChange={e=>setTitle(e.target.value)}/></label><div className="dialog-grid"><label>Date<input required type="date" value={date} onChange={e=>setDate(e.target.value)}/></label><label>{kind==="session"?"Start":"Time (optional)"}<input type="time" value={time} onChange={e=>setTime(e.target.value||defaultTime)}/></label>{kind==="session"&&<label>End<input required type="time" value={endTime} onChange={e=>setEndTime(e.target.value)}/></label>}</div>{message&&<p className="form-message" role="alert">{message}</p>}<div className="dialog-actions">{selected&&<Button type="button" variant="quiet" onClick={()=>void remove()}>Delete</Button>}<Button type="button" variant="secondary" onClick={()=>setDialogOpen(false)}>Cancel</Button><Button disabled={saving}>{saving?"Saving…":"Save"}</Button></div></form>}</Dialog></>
 }

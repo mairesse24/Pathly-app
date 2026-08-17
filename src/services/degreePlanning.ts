@@ -44,9 +44,23 @@ export async function getRequirementGroups(programId: string) {
   return data as RequirementGroup[]
 }
 export async function getActiveUserDegreePlan() {
-  const { data,error } = await supabase.from("user_degree_plans").select("*,user_degree_requirement_groups(*,user_degree_requirements(*))").eq("status","active").order("sort_order",{referencedTable:"user_degree_requirement_groups"}).maybeSingle()
-  if(error) throw error
-  return data as UserDegreePlan|null
+  const { data: plan, error: planError } = await supabase.from("user_degree_plans").select("*").eq("status", "active").maybeSingle()
+  if (planError) throw planError
+  if (!plan) return null
+  const { data: groups, error: groupError } = await supabase.from("user_degree_requirement_groups").select("*").eq("plan_id", plan.id).order("sort_order")
+  if (groupError) throw groupError
+  const groupIds = (groups || []).map((group) => group.id)
+  const { data: requirements, error: requirementError } = groupIds.length
+    ? await supabase.from("user_degree_requirements").select("*").in("group_id", groupIds).order("sort_order")
+    : { data: [], error: null }
+  if (requirementError) throw requirementError
+  return {
+    ...plan,
+    user_degree_requirement_groups: (groups || []).map((group) => ({
+      ...group,
+      user_degree_requirements: (requirements || []).filter((item) => item.group_id === group.id),
+    })),
+  } as UserDegreePlan
 }
 export function calculateDegreeProgress(program: DegreeProgram, groups: RequirementGroup[], courses: CompletedCourse[]) {
   const unique = new Map<string, CompletedCourse>()

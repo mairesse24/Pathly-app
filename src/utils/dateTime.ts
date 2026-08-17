@@ -73,3 +73,17 @@ export function formatInstant(
     timeZone: validTimeZone(timeZone),
   }).format(new Date(value))
 }
+
+export function zonedDateTimeToIso(key: string, time: string, timeZone?: string | null) {
+  const [year, month, day] = key.split("-").map(Number)
+  const [hour, minute] = time.split(":").map(Number)
+  const intended = Date.UTC(year, month - 1, day, hour, minute)
+  let guess = intended
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const parts = new Intl.DateTimeFormat("en-US", { timeZone: validTimeZone(timeZone), year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(guess))
+    const value = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find(part => part.type === type)?.value)
+    const represented = Date.UTC(value("year"), value("month") - 1, value("day"), value("hour"), value("minute"))
+    guess += intended - represented
+  }
+  return new Date(guess).toISOString()
+}
