@@ -3,6 +3,12 @@ export const syllabusSchema = {
   properties: {
     course_code: { anyOf: [{ type: "string" }, { type: "null" }] },
     course_title: { anyOf: [{ type: "string" }, { type: "null" }] },
+    instructor: { anyOf: [{ type: "string" }, { type: "null" }] },
+    credits: { anyOf: [{ type: "number" }, { type: "null" }] },
+    meeting_days: { anyOf: [{ type: "array", items: { type: "string" } }, { type: "null" }] },
+    meeting_start: { anyOf: [{ type: "string" }, { type: "null" }] },
+    meeting_end: { anyOf: [{ type: "string" }, { type: "null" }] },
+    location: { anyOf: [{ type: "string" }, { type: "null" }] },
     course_summary: { type: "string" },
     assignments: { type: "array", items: { type: "object", additionalProperties: false, properties: {
       title: { type: "string" }, description: { type: ["string", "null"] }, due_at: { type: ["string", "null"] }, estimated_minutes: { type: ["integer", "null"] },
@@ -10,7 +16,7 @@ export const syllabusSchema = {
     exams: { type: "array", items: { type: "object", additionalProperties: false, properties: {
       title: { type: "string" }, exam_at: { type: ["string", "null"] }, location: { type: ["string", "null"] }, topics_summary: { type: ["string", "null"] },
     }, required: ["title", "exam_at", "location", "topics_summary"] } },
-  }, required: ["course_code", "course_title", "course_summary", "assignments", "exams"],
+  }, required: ["course_code", "course_title", "instructor", "credits", "meeting_days", "meeting_start", "meeting_end", "location", "course_summary", "assignments", "exams"],
 }
 
 export const lectureSchema = {

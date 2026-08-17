@@ -61,6 +61,7 @@ export async function approveSyllabus(input: {
   assignmentIndexes: number[]
   examIndexes: number[]
   courseId: string
+  courseMetadata?: Record<string, unknown>
 }) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user || user.id !== input.processing.user_id) throw new Error("Your session is no longer valid.")
@@ -69,7 +70,7 @@ export async function approveSyllabus(input: {
   if (assignments.some((item) => !item.title) || exams.some((item) => !item.title)) throw new Error("Every selected item needs a title.")
 
   const { error } = await supabase.rpc("approve_syllabus_processing", {
-    p_processing_id: input.processing.id, p_assignments: assignments, p_exams: exams, p_course_id: input.courseId,
+    p_processing_id: input.processing.id, p_assignments: assignments, p_exams: exams, p_course_id: input.courseId, p_course_metadata: input.courseMetadata || {},
   })
   if (error) throw error
   return { ...input.processing, course_id: input.courseId, status: "approved", approved_at: new Date().toISOString() } as ProcessingResultRecord

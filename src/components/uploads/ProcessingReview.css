@@ -1,0 +1,1 @@
+.course-metadata-review { display:grid; gap:8px; margin:16px 0; padding:14px; border:1px solid var(--line); border-radius:12px; background:var(--surface); }.course-metadata-review label { display:flex; align-items:flex-start; gap:8px; color:var(--ink); text-transform:capitalize; }.course-metadata-review small { color:var(--muted); text-transform:none; }

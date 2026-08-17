@@ -110,7 +110,7 @@ Deno.serve(async (req: Request) => {
 
     await updateState({ processing_stage: "creating" })
     const instruction = upload.category === "syllabus"
-      ? "Extract only explicit syllabus facts. Extract course_code and course_title only when clearly printed in the document; otherwise return null. Preserve the explicit course code exactly enough for deterministic comparison. Use ISO 8601 with an offset when a time zone is stated; otherwise use null for uncertain dates. Never invent dates. Return assignments and exams for student review."
+      ? "Extract only explicit syllabus facts. Extract course_code, course_title, instructor, credits, meeting_days, meeting_start, meeting_end, and location only when clearly printed in the document; otherwise return null. Preserve the explicit course code exactly enough for deterministic comparison. Use ISO 8601 with an offset when a time zone is stated; otherwise use null for uncertain dates. Never invent dates. Return assignments and exams for student review."
       : upload.category === "lecture"
         ? "Create faithful study materials from this lecture. Include a concise summary, key concepts, useful flashcards, practice questions, and topics worth reviewing. Do not add facts absent from the source."
         : upload.category === "degree_audit"
