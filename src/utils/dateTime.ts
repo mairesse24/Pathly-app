@@ -16,8 +16,23 @@ export function validTimeZone(value?: string | null) {
   }
 }
 
+function parseDateString(value: string): Date {
+  // Try native parsing first
+  let d = new Date(value)
+  if (!isNaN(d.getTime())) return d
+
+  // Replace first space between date and time with 'T' and normalize
+  // timezone offsets like +0000 -> +00:00 for consistent parsing.
+  const alt = value.replace(" ", "T").replace(/([+-]\d{2})(\d{2})$/, (_, h, m) => `${h}:${m}`)
+  d = new Date(alt)
+  if (!isNaN(d.getTime())) return d
+
+  // Preserve original semantics if still invalid (do not assume UTC)
+  return new Date(value)
+}
+
 export function dateKey(value: Date | string, timeZone?: string | null) {
-  const date = typeof value === "string" ? new Date(value) : value
+  const date = typeof value === "string" ? parseDateString(value) : value
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: validTimeZone(timeZone),
     year: "numeric",
