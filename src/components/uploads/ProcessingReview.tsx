@@ -6,7 +6,7 @@ import type { AcademicRecordResult, DegreeAuditResult, LectureResult, Processing
 import type { UploadedFileRecord } from "../../types/uploads"
 import { useAcademicData } from "../../context/AcademicDataContext"
 import { reassociateSyllabusCourse } from "../../services/uploads"
-import { classifyCourseIdentity, normalizeCourseCode } from "../../utils/courseIdentity"
+import { classifyCourseIdentity, courseCodesMatch } from "../../utils/courseIdentity"
 import "./ProcessingReview.css"
 
 export function ProcessingReview({ record, upload, onApproved, onCourseChanged }: { record: ProcessingResultRecord; upload: UploadedFileRecord; onApproved: (row: ProcessingResultRecord, sourceDeleted?: boolean) => void; onCourseChanged?:(courseId:string)=>void }) {
@@ -121,7 +121,7 @@ function NewSyllabusReview({record,upload,onApproved,onCourseChanged}:{record:Pr
   const selectedAssignments=useMemo(()=>new Set(assignmentIndexes),[assignmentIndexes]),selectedExams=useMemo(()=>new Set(examIndexes),[examIndexes]),selectedCount=assignmentIndexes.length+examIndexes.length
   const courses=allCourses,selectedCourse=allCourses.find(course=>course.id===courseId)
   const documentCode=initial.course_code||null,documentTitle=initial.course_title||null
-  const identifiedCourse=allCourses.find(course=>documentCode?normalizeCourseCode(course.course_code)===normalizeCourseCode(documentCode):documentTitle?course.course_name.trim().toLowerCase()===documentTitle.trim().toLowerCase():false)
+  const identifiedCourse=allCourses.find(course=>documentCode?courseCodesMatch(course.course_code,documentCode):documentTitle?course.course_name.trim().toLowerCase()===documentTitle.trim().toLowerCase():false)
   const identity=classifyCourseIdentity({documentCode,documentTitle,selectedCode:selectedCourse?.course_code,selectedTitle:selectedCourse?.course_name})
   const explicitMatch=identity==="match",mismatch=identity==="mismatch"
   const metadata={instructor:result.instructor,credits:result.credits,meeting_days:result.meeting_days,meeting_start:result.meeting_start,meeting_end:result.meeting_end}

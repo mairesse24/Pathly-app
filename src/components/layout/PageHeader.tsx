@@ -5,7 +5,8 @@ import { useProfile } from "../../context/ProfileContext"
 import { formatDateKey, todayKey } from "../../utils/dateTime"
 import { AddMaterialDialog, type MaterialContext } from "../uploads/AddMaterialDialog"
 import { NotificationPanel } from "../notifications/NotificationPanel"
-export function PageHeader({ title, materialContext, onMaterialUploaded }: { title: string; materialContext?: MaterialContext; onMaterialUploaded?: () => void }) {
+import type { UploadedFileRecord } from "../../types/uploads"
+export function PageHeader({ title, materialContext, onMaterialUploaded, closeOnUpload }: { title: string; materialContext?: MaterialContext; onMaterialUploaded?: (row: UploadedFileRecord) => void; closeOnUpload?: boolean }) {
   const [materialsOpen, setMaterialsOpen] = useState(false)
   const { profile } = useProfile()
   const today = todayKey(profile?.timezone)
@@ -27,7 +28,7 @@ export function PageHeader({ title, materialContext, onMaterialUploaded }: { tit
           <Icon name="upload" size={17} /> Add material
         </Button>
       </div>
-      <AddMaterialDialog open={materialsOpen} onClose={() => setMaterialsOpen(false)} context={materialContext} onUploaded={() => onMaterialUploaded?.()} />
+      <AddMaterialDialog open={materialsOpen} onClose={() => setMaterialsOpen(false)} context={materialContext} onUploaded={(row) => { if (closeOnUpload) setMaterialsOpen(false); onMaterialUploaded?.(row) }} />
     </header>
   )
 }

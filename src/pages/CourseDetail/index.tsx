@@ -8,6 +8,8 @@ import { Button } from "../../components/ui/Button"
 
 import { Card } from "../../components/ui/Card"
 
+import { Dialog } from "../../components/ui/Dialog"
+
 import { useAcademicData } from "../../context/AcademicDataContext"
 import { useProfile } from "../../context/ProfileContext"
 import {
@@ -15,10 +17,20 @@ import {
   formatBytes,
   listUploads,
 } from "../../services/uploads"
+import { processUpload } from "../../services/processing"
 
-import type { UploadedFileRecord } from "../../types/uploads"
+import type { ProcessingResultRecord, ProcessingStage, UploadedFileRecord } from "../../types/uploads"
 import { formatInstant } from "../../utils/dateTime"
 import { AddMaterialDialog } from "../../components/uploads/AddMaterialDialog"
+import { ProcessingReview } from "../../components/uploads/ProcessingReview"
+import { OrganizeNotes } from "../../components/study/OrganizeNotes"
+
+const reviewStageLabel: Record<ProcessingStage, string> = {
+  preparing: "Preparing material…",
+  reading: "Reading material…",
+  creating: "Creating study materials…",
+  saving: "Saving your results…",
+}
 
 export function CourseDetailPage() {
   const { profile } = useProfile()
@@ -26,13 +38,18 @@ export function CourseDetailPage() {
 
   const navigate = useNavigate()
 
-  const { courses, assignments, exams, studySessions, loading } =
+  const { courses, assignments, exams, studySessions, loading, refreshAcademicData } =
     useAcademicData()
 
   const [files, setFiles] = useState<UploadedFileRecord[]>([])
 
   const [fileError, setFileError] = useState("")
   const [materialOpen, setMaterialOpen] = useState(false)
+
+  const [reviewUpload, setReviewUpload] = useState<UploadedFileRecord | null>(null)
+  const [reviewResult, setReviewResult] = useState<ProcessingResultRecord | null>(null)
+  const [reviewStage, setReviewStage] = useState<ProcessingStage | null>(null)
+  const [reviewError, setReviewError] = useState("")
 
   useEffect(() => {
     if (!courseId) return
@@ -47,6 +64,32 @@ export function CourseDetailPage() {
         ),
       )
   }, [courseId])
+
+  async function startReview(row: UploadedFileRecord) {
+    if (row.category !== "syllabus" && row.category !== "lecture") return
+    setReviewUpload(row)
+    setReviewResult(null)
+    setReviewError("")
+    setReviewStage("preparing")
+    setFiles((current) => current.map((item) => item.id === row.id ? { ...item, processing_status: "processing", processing_stage: "preparing", processing_error_code: null, error_message: null } : item))
+    try {
+      const result = await processUpload(row.id, (stage) => setReviewStage(stage))
+      setReviewResult(result)
+      setFiles((current) => current.map((item) => item.id === row.id ? { ...item, processing_status: "ready_for_review", processing_stage: null } : item))
+    } catch {
+      setReviewError("We couldn't process this file. Your original file is still safely stored.")
+      setFiles((current) => current.map((item) => item.id === row.id ? { ...item, processing_status: "processing_failed", processing_stage: null } : item))
+    } finally {
+      setReviewStage(null)
+    }
+  }
+
+  function closeReview() {
+    setReviewUpload(null)
+    setReviewResult(null)
+    setReviewStage(null)
+    setReviewError("")
+  }
 
   if (loading)
     return (
@@ -86,7 +129,7 @@ export function CourseDetailPage() {
 
   return (
     <>
-      <PageHeader title={course.course_code} materialContext={{ origin: "course", courseId: course.id }} onMaterialUploaded={() => void listUploads(course.id).then(setFiles)} />
+      <PageHeader title={course.course_code} materialContext={{ origin: "course", courseId: course.id }} closeOnUpload onMaterialUploaded={(row) => { setFiles((current) => [row, ...current]); void startReview(row) }} />
       <main className="page">
         <div className="intro-row">
           <div>
@@ -148,7 +191,11 @@ export function CourseDetailPage() {
               <p className="form-message">{fileError}</p>
             ) : files.length ? (
               <ul className="plain-list file-links">
-                {files.map((file) => (
+                {files.map((file) => {
+                  const reviewable = file.category === "syllabus" || file.category === "lecture"
+                  const isReviewing = reviewUpload?.id === file.id
+                  const busy = isReviewing && reviewStage !== null
+                  return (
                   <li key={file.id}>
                     <button
                       className="text-button"
@@ -157,11 +204,21 @@ export function CourseDetailPage() {
                       {file.original_filename}
                     </button>
                     <small>
-                      {formatBytes(file.size_bytes)} · Uploaded — AI processing
-                      not yet enabled
+                      {formatBytes(file.size_bytes)} · Uploaded
+                      {file.processing_status === "processed" ? " · Reviewed" : ""}
                     </small>
+                    {reviewable && file.processing_status !== "processed" && (
+                      <Button variant="secondary" disabled={busy} onClick={() => void startReview(file)}>
+                        {busy
+                          ? reviewStageLabel[reviewStage ?? "preparing"]
+                          : file.processing_status === "processing_failed"
+                            ? "Try again"
+                            : file.category === "syllabus" ? "Review syllabus" : "Create study materials"}
+                      </Button>
+                    )}
                   </li>
-                ))}
+                  )
+                })}
               </ul>
             ) : (
               <p>No files associated with this course.</p>
@@ -173,9 +230,35 @@ export function CourseDetailPage() {
               Upload course material
             </Button>
           </Card>
+          <OrganizeNotes courseId={course.id} />
         </div>
       </main>
-      <AddMaterialDialog open={materialOpen} onClose={() => setMaterialOpen(false)} context={{ origin: "course", courseId: course.id }} onUploaded={() => void listUploads(course.id).then(setFiles)} />
+      <AddMaterialDialog open={materialOpen} onClose={() => setMaterialOpen(false)} context={{ origin: "course", courseId: course.id }} onUploaded={(row) => { setMaterialOpen(false); setFiles((current) => [row, ...current]); void startReview(row) }} />
+      <Dialog open={!!reviewUpload} onClose={closeReview} title={reviewUpload?.category === "lecture" ? "Study materials" : "Syllabus review"}>
+        {reviewError ? (
+          <>
+            <p className="form-message" role="alert">{reviewError}</p>
+            <div className="dialog-actions">
+              <Button variant="secondary" onClick={closeReview}>Close</Button>
+              {reviewUpload && <Button onClick={() => void startReview(reviewUpload)}>Try again</Button>}
+            </div>
+          </>
+        ) : reviewResult && reviewUpload ? (
+          <ProcessingReview
+            record={reviewResult}
+            upload={reviewUpload}
+            onCourseChanged={(changedCourseId) => setFiles((current) => current.map((item) => item.id === reviewUpload.id ? { ...item, course_id: changedCourseId } : item))}
+            onApproved={(approved, sourceDeleted) => {
+              void refreshAcademicData()
+              void listUploads(course.id).then(setFiles)
+              if (sourceDeleted) { closeReview(); return }
+              setReviewResult(approved)
+            }}
+          />
+        ) : (
+          <p role="status">{reviewStageLabel[reviewStage ?? "preparing"]}</p>
+        )}
+      </Dialog>
     </>
   )
 }
