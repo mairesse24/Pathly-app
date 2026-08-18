@@ -8,9 +8,11 @@
     "build": "vite build",
     "test:degree-planning": "node --experimental-strip-types --test src/utils/degreeProgress.test.ts",
     "test:active-planning": "node --experimental-strip-types --test src/utils/activePlanning.test.ts",
+    "test:smart-planning": "node --experimental-strip-types --test src/utils/smartPlanning.test.ts",
     "test:processing-schemas": "node scripts/validate-processing-schemas.mjs",
     "test:degree-audit-isolation": "node scripts/validate-degree-audit-isolation.mjs",
     "test:course-removal": "node scripts/validate-course-removal.mjs",
+    "test:organize-notes": "node scripts/validate-organize-notes.mjs",
     "preview": "vite preview",
     "format": "oxfmt"
   },
