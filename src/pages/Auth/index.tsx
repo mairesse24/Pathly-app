@@ -4,124 +4,113 @@ import { Brand } from "../../components/layout/Brand";
 import { Button } from "../../components/ui/Button";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../../lib/supabase";
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, PASSWORD_RECOMMENDED_LENGTH, getPasswordLengthMessage } from "../../utils/passwordPolicy";
 
-const RESEND_COOLDOWN_SECONDS = 30;
+function authRedirectUrl() {
+  const configuredOrigin = import.meta.env.VITE_PUBLIC_APP_URL?.trim();
+  const local = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+  const origin = local || !configuredOrigin ? window.location.origin : configuredOrigin;
+  return new URL("/auth", origin).toString();
+}
 
-function confirmationRedirectUrl() {
-  return new URL("/auth", window.location.origin).toString();
+function maskEmail(value: string) {
+  const [local, domain] = value.split("@");
+  if (!domain || !local) return value;
+  const visible = local.slice(0, Math.min(2, local.length));
+  return `${visible}${"•".repeat(Math.max(local.length - visible.length, 3))}@${domain}`;
+}
+
+const RATE_LIMIT_MESSAGE = "Too many confirmation emails were requested. Please wait a few minutes before trying again.";
+function isRateLimited(error: { status?: number; code?: string; message?: string } | null) {
+  if (!error) return false;
+  if (error.code === "over_email_send_rate_limit" || error.code === "over_request_rate_limit") return true;
+  return error.status === 429 || /rate limit/i.test(error.message ?? "");
 }
 
 export function AuthPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-
-  // Capture the confirmation-link "type" before Supabase's own session
-  // detection strips it from the URL, so we can show a real success
-  // screen instead of silently redirecting the user away.
-  const [justConfirmedSignup] = useState(() => {
-    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-    const searchParams = new URLSearchParams(window.location.search);
-    return (hashParams.get("type") ?? searchParams.get("type")) === "signup";
-  });
-
-  const [signup, setSignup] = useState(false);
+  const [mode, setMode] = useState<"signin" | "signup" | "confirmation" | "forgot">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
-  const [pendingConfirmation, setPendingConfirmation] = useState(false);
-  const [resendCooldown, setResendCooldown] = useState(0);
+  const [confirmationEmail, setConfirmationEmail] = useState("");
+  const [cooldown, setCooldown] = useState(0);
+
+  const signup = mode === "signup";
 
   useEffect(() => {
-    if (resendCooldown <= 0) return;
-    const timer = window.setInterval(() => setResendCooldown((seconds) => Math.max(0, seconds - 1)), 1000);
+    if (cooldown <= 0) return;
+    const timer = window.setInterval(() => setCooldown((seconds) => Math.max(0, seconds - 1)), 1000);
     return () => window.clearInterval(timer);
-  }, [resendCooldown]);
-
-  if (user && justConfirmedSignup) {
-    return (
-      <main className="auth-page">
-        <div className="auth-card">
-          <Brand />
-          <p className="eyebrow">You're confirmed</p>
-          <h1>Your email is confirmed.</h1>
-          <p>You're signed in to Pathly. Let's finish setting up your account.</p>
-          <Button type="button" onClick={() => navigate("/onboarding", { replace: true })}>Continue to Pathly</Button>
-        </div>
-      </main>
-    );
-  }
+  }, [cooldown > 0]);
 
   if (user) return <Navigate to={(location.state as { from?: string })?.from ?? "/dashboard"} replace />;
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    setBusy(true);
+  async function submit(event: FormEvent) {
+    event.preventDefault();
     setMessage("");
+    if (signup && password.length < PASSWORD_MIN_LENGTH) {
+      setMessage(`Your password must be at least ${PASSWORD_MIN_LENGTH} characters.`);
+      return;
+    }
+
+    setBusy(true);
     const submittedEmail = email.trim();
     const result = signup
-      ? await supabase.auth.signUp({
-          email: submittedEmail,
-          password,
-          options: { data: { display_name: name, full_name: name }, emailRedirectTo: confirmationRedirectUrl() },
-        })
+      ? await supabase.auth.signUp({ email: submittedEmail, password, options: { data: { display_name: name, full_name: name }, emailRedirectTo: authRedirectUrl() } })
       : await supabase.auth.signInWithPassword({ email: submittedEmail, password });
     setBusy(false);
-    if (result.error) return setMessage(result.error.message);
-    if (signup && !result.data.session) {
+
+    if (result.error) {
+      setMessage(isRateLimited(result.error) ? RATE_LIMIT_MESSAGE : result.error.message);
+      return;
+    }
+    if (signup) {
       setEmail(submittedEmail);
-      setPendingConfirmation(true);
-      setResendCooldown(RESEND_COOLDOWN_SECONDS);
+      setConfirmationEmail(submittedEmail);
+      setCooldown(60);
+      setMode("confirmation");
       return;
     }
     navigate("/onboarding", { replace: true });
   }
 
+  function showMode(nextMode: "signin" | "signup" | "forgot") {
+    setMode(nextMode);
+    setPassword("");
+    setShowPassword(false);
+    setMessage("");
+  }
+
   async function resendConfirmation() {
-    if (busy || resendCooldown > 0 || !email) return;
+    if (busy || cooldown > 0) return;
     setBusy(true);
     setMessage("");
-    const { error } = await supabase.auth.resend({ type: "signup", email, options: { emailRedirectTo: confirmationRedirectUrl() } });
+    const { error } = await supabase.auth.resend({ type: "signup", email: confirmationEmail, options: { emailRedirectTo: authRedirectUrl() } });
     setBusy(false);
-    setResendCooldown(RESEND_COOLDOWN_SECONDS);
-    setMessage(error ? "We couldn't resend the email right now. Please try again shortly." : "Confirmation email sent. Check your inbox (and spam folder).");
+    setCooldown(60);
+    setMessage(isRateLimited(error) ? RATE_LIMIT_MESSAGE : error ? "We couldn't send instructions right now. Please try again in a moment." : "If confirmation is still needed, we've sent new instructions.");
   }
 
-  if (pendingConfirmation) {
-    return (
-      <main className="auth-page">
-        <div className="auth-card">
-          <Brand />
-          <p className="eyebrow">Almost there</p>
-          <h1>Check your email to confirm your Pathly account.</h1>
-          <p>We've sent instructions to <strong>{email}</strong>. Click the link in that email to finish setting up your account, then come back here to sign in.</p>
-          {message && <p className="form-message" role="status">{message}</p>}
-          <Button type="button" onClick={() => void resendConfirmation()} disabled={busy || resendCooldown > 0}>
-            {resendCooldown > 0 ? `Resend email (${resendCooldown}s)` : busy ? "Sending…" : "Resend confirmation email"}
-          </Button>
-          <button className="text-button" onClick={() => { setPendingConfirmation(false); setSignup(false); setMessage(""); }}>Back to sign in</button>
-        </div>
-      </main>
-    );
+  async function requestPasswordReset(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setMessage("");
+    const submittedEmail = email.trim();
+    await supabase.auth.resetPasswordForEmail(submittedEmail, { redirectTo: authRedirectUrl() });
+    setBusy(false);
+    setEmail(submittedEmail);
+    setMessage("If an account matches that address, we'll send password reset instructions.");
   }
 
-  return (
-    <main className="auth-page">
-      <div className="auth-card">
-        <Brand />
-        <p className="eyebrow">Welcome to Pathly</p>
-        <h1>{signup ? "Create your calm space." : "Good to see you."}</h1>
-        <form onSubmit={submit}>
-          {signup && <label>Display name<input value={name} onChange={(e) => setName(e.target.value)} required /></label>}
-          <label>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
-          <label>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={6} required /></label>
-          {message && <p className="form-message">{message}</p>}
-          <Button type="submit" disabled={busy}>{busy ? "One moment…" : signup ? "Create account" : "Sign in"}</Button>
-        </form>
-        <button className="text-button" onClick={() => { setSignup(!signup); setMessage(""); }}>{signup ? "Already have an account? Sign in" : "New here? Create an account"}</button>
-      </div>
-    </main>
-  );
+  if (mode === "confirmation") return <main className="auth-page"><div className="auth-card auth-confirmation"><Brand/><p className="eyebrow">Account confirmation</p><h1>Check your email</h1><p>If an account can be created or still needs confirming for this address, we've sent instructions there. Open the email and follow the link to finish setting up Pathly.</p><p className="confirmation-email">{maskEmail(confirmationEmail)}</p>{message && <p className={message.startsWith("We couldn't") || message.startsWith("Too many") ? "form-message" : "auth-success"} role="status">{message}</p>}<div className="auth-actions"><Button type="button" onClick={() => void resendConfirmation()} disabled={busy || cooldown > 0}>{busy ? "Sending…" : cooldown > 0 ? `Resend confirmation (${cooldown}s)` : "Resend confirmation email"}</Button><Button type="button" variant="secondary" onClick={() => showMode("signin")}>Back to sign in</Button><button type="button" className="text-button" onClick={() => { setEmail(""); showMode("signup"); }}>Use a different email</button></div><p className="auth-help">Already confirmed? Sign in, or use Forgot password if you need help accessing your account.</p></div></main>;
+
+  if (mode === "forgot") return <main className="auth-page"><div className="auth-card"><Brand/><p className="eyebrow">Account access</p><h1>Reset your password.</h1><p>Enter your email and we'll send instructions if an account matches that address.</p><form onSubmit={requestPasswordReset}><label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required /></label>{message && <p className="auth-success" role="status">{message}</p>}<Button type="submit" disabled={busy}>{busy ? "Sending…" : "Send reset instructions"}</Button></form><button type="button" className="text-button" onClick={() => showMode("signin")}>Back to sign in</button></div></main>;
+
+  return <main className="auth-page"><div className="auth-card"><Brand/><p className="eyebrow">Welcome to Pathly</p><h1>{signup ? "Create your calm space." : "Good to see you."}</h1><form onSubmit={submit}>{signup && <label>Display name<input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" required /></label>}<label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required /></label><label>Password<div className="password-field"><input type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} minLength={signup ? PASSWORD_MIN_LENGTH : undefined} maxLength={signup ? PASSWORD_MAX_LENGTH : undefined} autoComplete={signup ? "new-password" : "current-password"} autoCapitalize="none" spellCheck={false} aria-describedby={signup ? "password-guidance" : undefined} required /><button type="button" className="password-toggle" onClick={() => setShowPassword((visible) => !visible)} aria-label={`${showPassword ? "Hide" : "Show"} password`} aria-pressed={showPassword}>{showPassword ? "Hide" : "Show"}</button></div>{signup && <small id="password-guidance" className={password.length >= PASSWORD_RECOMMENDED_LENGTH ? "password-guidance is-strong" : "password-guidance"}>{password ? getPasswordLengthMessage(password) : `${PASSWORD_MIN_LENGTH} characters minimum; ${PASSWORD_RECOMMENDED_LENGTH}+ recommended. Spaces and passphrases are welcome.`}</small>}</label>{message && <p className="form-message" role="alert">{message}</p>}<Button type="submit" disabled={busy}>{busy ? "One moment…" : signup ? "Create account" : "Sign in"}</Button></form><button type="button" className="text-button" onClick={() => showMode(signup ? "signin" : "signup")}>{signup ? "Already have an account? Sign in" : "New here? Create an account"}</button>{!signup && <button type="button" className="text-button auth-forgot" onClick={() => showMode("forgot")}>Forgot password?</button>}</div></main>;
 }
