@@ -1,33 +1,50 @@
-.upload-fields { width:min(560px,100%); margin:18px auto; display:grid; gap:12px; text-align:left; }
-.upload-fields label { display:grid; gap:6px; color:var(--muted); font-size:13px; font-weight:600; }
-.visually-hidden-file { position:absolute!important; width:1px!important; height:1px!important; padding:0!important; margin:-1px!important; overflow:hidden!important; clip:rect(0,0,0,0)!important; white-space:nowrap!important; border:0!important; }
-.upload-zone > .btn-secondary { margin-right:10px; }
-.upload-fields select,.upload-fields input { width:100%; padding:11px 12px; border:1px solid var(--line); border-radius:10px; background:#fff; color:var(--ink); }
-.privacy-notice { width:min(720px,100%); margin:16px auto!important; padding:14px; text-align:left; border-radius:10px; background:#f8f5ee; color:var(--ink)!important; }
-.storage-summary { margin:22px 0; display:grid; grid-template-columns:auto auto minmax(120px,1fr); align-items:center; gap:12px; color:var(--muted); }
-.storage-summary strong { color:var(--ink); }
-.uploaded-file-list { display:grid; gap:12px; }
-.uploaded-file-row { display:flex; justify-content:space-between; align-items:center; gap:18px; }
-.upload-row-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:9px; }
-.upload-with-review { display:grid; gap:10px; }
-.processing-review { margin-left:24px; border-top-left-radius:6px; }
-.processing-review h3 { margin-bottom:9px; }
-.processing-review h4 { margin:22px 0 9px; }
-.processing-review ul,.processing-review ol { margin:8px 0; padding-left:23px; color:var(--muted); }
-.processing-review li { margin:5px 0; }
-.processing-review dl { display:grid; gap:9px; }
-.processing-review dl div { padding:10px 12px; border-radius:10px; background:var(--surface); }
-.processing-review dt { font-weight:700; }
-.processing-review dd { margin:3px 0 0; color:var(--muted); }
-.review-note { margin:14px 0!important; padding:11px; border-radius:9px; background:#f8f5ee; }
-.review-item { display:grid; grid-template-columns:auto minmax(180px,1fr) minmax(210px,1fr); gap:10px; align-items:end; margin-bottom:9px; padding:12px; border:1px solid var(--line); border-radius:11px; }
-.review-item>input { align-self:center; width:18px; height:18px; }
-.review-item label { display:grid; gap:4px; color:var(--muted); font-size:12px; font-weight:600; }
-.review-item label input { width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:8px; }
-.processing-review>.btn { margin-top:15px; }
-.upload-status { color:var(--deep)!important; }
-.processing-support { max-width:680px; margin-top:10px!important; color:var(--muted)!important; }
-.processing-failure { max-width:680px; margin-top:10px!important; color:#7c4242!important; }
-.file-links li { display:grid; gap:3px; }
-.file-links small { color:var(--muted); }
-@media (max-width:680px) { .storage-summary { grid-template-columns:1fr; }.uploaded-file-row { align-items:flex-start; flex-direction:column; }.upload-row-actions { justify-content:flex-start; }.processing-review { margin-left:0; }.review-item { grid-template-columns:auto 1fr; }.review-item label:last-child { grid-column:2; } }
+/* START processing-review sizing tweaks - add larger visible areas for generated fields */
+.processing-review h4 { margin: 24px 0 12px; }
+
+.processing-review .generated-summary {
+  min-height: 160px; /* comfortable summary height (140-180px target) */
+  margin-bottom: 18px;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  box-sizing: border-box;
+  overflow-wrap: break-word;
+}
+
+.processing-review .generated-key-concepts {
+  min-height: 240px; /* target ~220-260px */
+  margin-bottom: 18px;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  box-sizing: border-box;
+}
+
+.processing-review .generated-practice-questions {
+  min-height: 300px; /* target ~260-320px */
+  margin-bottom: 18px;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  box-sizing: border-box;
+}
+
+/* Avoid internal scrollbars for normal content; allow if content is unusually long */
+.processing-review .generated-summary,
+.processing-review .generated-key-concepts,
+.processing-review .generated-practice-questions {
+  max-height: 64vh; /* sensible cap to prevent uncontrolled page growth */
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Mobile adjustments */
+@media (max-width: 680px) {
+  .processing-review .generated-summary { min-height: 120px; }
+  .processing-review .generated-key-concepts { min-height: 140px; }
+  .processing-review .generated-practice-questions { min-height: 160px; }
+}
+/* END processing-review sizing tweaks */
