@@ -8,10 +8,10 @@ export function ProcessingReview({ record, onApproved }: { record: ProcessingRes
   if (record.kind === "lecture") {
     const result = record.result as LectureResult
     return <Card className="processing-review"><p className="eyebrow">Study materials</p><h3>{result.title}</h3>
-      <h4>Summary</h4><p>{result.summary}</p>
-      <h4>Key concepts</h4><ul>{result.key_concepts.map((concept) => <li key={concept}>{concept}</li>)}</ul>
+      <h4>Summary</h4><p className="generated-summary">{result.summary}</p>
+      <h4>Key concepts</h4><ul className="generated-key-concepts">{result.key_concepts.map((concept) => <li key={concept}>{concept}</li>)}</ul>
       <h4>Flashcards</h4><dl>{result.flashcards.map((item) => <div key={item.front}><dt>{item.front}</dt><dd>{item.back}</dd></div>)}</dl>
-      <h4>Practice questions</h4><ol>{result.practice_questions.map((question) => <li key={question}>{question}</li>)}</ol>
+      <h4>Practice questions</h4><ol className="generated-practice-questions">{result.practice_questions.map((question) => <li key={question}>{question}</li>)}</ol>
       <h4>Topics worth reviewing</h4><ul>{result.topics_worth_reviewing.map((topic) => <li key={topic}>{topic}</li>)}</ul>
     </Card>
   }
