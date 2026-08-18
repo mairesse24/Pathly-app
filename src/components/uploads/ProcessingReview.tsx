@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { Button } from "../ui/Button"
 import { Card } from "../ui/Card"
 import { approveSyllabus, confirmAcademicRecord, confirmDegreeAudit } from "../../services/processing"
@@ -7,6 +8,8 @@ import type { UploadedFileRecord } from "../../types/uploads"
 import { useAcademicData } from "../../context/AcademicDataContext"
 import { reassociateSyllabusCourse } from "../../services/uploads"
 import { classifyCourseIdentity, courseCodesMatch } from "../../utils/courseIdentity"
+import { useProfile } from "../../context/ProfileContext"
+import { dateKey, formatInstant } from "../../utils/dateTime"
 import "./ProcessingReview.css"
 
 export function ProcessingReview({ record, upload, onApproved, onCourseChanged }: { record: ProcessingResultRecord; upload: UploadedFileRecord; onApproved: (row: ProcessingResultRecord, sourceDeleted?: boolean) => void; onCourseChanged?:(courseId:string)=>void }) {
@@ -30,6 +33,37 @@ function LectureStudyView({result}:{result:LectureResult}) {
     <details className="study-details"><summary>Practice questions ({result.practice_questions.length})</summary><ol>{result.practice_questions.map(question=><li key={question}>{question}</li>)}</ol></details>
     <details className="study-details"><summary>Topics worth reviewing ({result.topics_worth_reviewing.length})</summary><ul>{result.topics_worth_reviewing.map(topic=><li key={topic}>{topic}</li>)}</ul></details>
   </Card>
+}
+
+function SyllabusCourseOverview({result}:{result:SyllabusResult}) {
+  const { profile } = useProfile()
+  const hasSchedule=Boolean(result.meeting_days?.length||result.meeting_start||result.meeting_end||result.location)
+  const datedExams=result.exams.filter(exam=>exam.exam_at)
+  return <section className="syllabus-course-overview" aria-labelledby="course-overview-heading">
+    <div className="syllabus-overview-section syllabus-overview-about">
+      <p className="eyebrow" id="course-overview-heading">About this course</p>
+      <p>{result.course_summary}</p>
+    </div>
+    {result.topics?.length?<div className="syllabus-overview-section"><h4>What you'll study</h4><ul className="syllabus-topic-list">{result.topics.map(topic=><li key={topic}>{topic}</li>)}</ul></div>:null}
+    {hasSchedule&&<div className="syllabus-overview-section"><h4>Class schedule</h4><div className="syllabus-schedule"><strong>{result.meeting_days?.join(" & ")}</strong>{(result.meeting_start||result.meeting_end)&&<span>{formatCourseTime(result.meeting_start)}{result.meeting_end?`–${formatCourseTime(result.meeting_end)}`:""}</span>}{result.location&&<span>{result.location}</span>}</div></div>}
+    {result.grading_breakdown?.length?<div className="syllabus-overview-section"><h4>Grading</h4><dl className="syllabus-grading">{result.grading_breakdown.map(item=><div key={`${item.label}-${item.value}`}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}</dl></div>:null}
+    {datedExams.length>0&&<div className="syllabus-overview-section"><h4>Important dates</h4><dl className="syllabus-important-dates">{datedExams.map((exam,index)=><div key={`${exam.title}-${exam.exam_at}-${index}`}><dt>{exam.title}</dt><dd>{formatSyllabusDate(exam.exam_at!,profile?.timezone)}</dd></div>)}</dl></div>}
+  </section>
+}
+
+function formatCourseTime(value:string|null) {
+  if(!value)return ""
+  const match=value.match(/^(\d{1,2}):(\d{2})/)
+  if(!match)return value
+  const hour=Number(match[1]),minute=match[2],suffix=hour>=12?"PM":"AM"
+  return `${hour%12||12}:${minute} ${suffix}`
+}
+
+function formatSyllabusDate(value:string,timeZone?:string|null) {
+  const options:Intl.DateTimeFormatOptions={month:"short",day:"numeric"}
+  if(/T/.test(value))return formatInstant(value,timeZone,{...options,hour:"numeric",minute:"2-digit"})
+  const dateOnly=value.match(/^\d{4}-\d{2}-\d{2}/)?.[0]
+  return dateOnly?new Intl.DateTimeFormat(undefined,{...options,timeZone:"UTC"}).format(new Date(`${dateOnly}T12:00:00Z`)):value
 }
 
 function DegreeAuditReview({ record, onApproved }: { record: ProcessingResultRecord; onApproved: (row: ProcessingResultRecord, sourceDeleted?: boolean) => void }) {
@@ -98,7 +132,7 @@ function SyllabusReview({ record, onApproved }: { record: ProcessingResultRecord
   }
   if (record.status === "approved") return <Card className="processing-review"><p className="save-success">Reviewed syllabus items were saved.</p></Card>
   return <Card className="processing-review"><p className="eyebrow">Syllabus review required</p><h3>Review before anything is added</h3>
-    <p>{result.course_summary}</p><p className="review-note">Automated extraction can make mistakes. Select only accurate items and edit titles or dates before saving.</p>
+    <SyllabusCourseOverview result={result}/><p className="review-note">Automated extraction can make mistakes. Select only accurate items and edit titles or dates before saving.</p>
     <h4>Assignments</h4>{result.assignments.length ? result.assignments.map((item, index) => <div className="review-item" key={`assignment-${index}`}>
       <input aria-label={`Include assignment ${item.title}`} type="checkbox" checked={selectedAssignments.has(index)} onChange={() => toggle(index, assignmentIndexes, setAssignmentIndexes)}/>
       <label>Title<input value={item.title} onChange={(event) => setResult((current) => ({ ...current, assignments: current.assignments.map((value, i) => i === index ? { ...value, title: event.target.value } : value) }))}/></label>
@@ -114,10 +148,35 @@ function SyllabusReview({ record, onApproved }: { record: ProcessingResultRecord
   </Card>
 }
 
+type MilestoneDraft={key:string;title:string;context:string|null;description:string|null;type:"assignment"|"exam";date:string}
+
 function NewSyllabusReview({record,upload,onApproved,onCourseChanged}:{record:ProcessingResultRecord;upload:UploadedFileRecord;onApproved:(row:ProcessingResultRecord)=>void;onCourseChanged?:(courseId:string)=>void}){
+  const navigate=useNavigate(),{profile}=useProfile()
   const {courses:allCourses,addCourse}=useAcademicData(),initial=record.result as SyllabusResult
-  const [result,setResult]=useState(()=>structuredClone(initial)),[assignmentIndexes,setAssignmentIndexes]=useState(()=>initial.assignments.map((_,i)=>i)),[examIndexes,setExamIndexes]=useState(()=>initial.exams.map((_,i)=>i))
+  const [result,setResult]=useState(()=>structuredClone(initial))
+  // Only items that already carry a concrete date start selected -- an
+  // undated assignment/exam (from a stale pre-milestone result, or one the
+  // model still miscategorized) is never calendar-ready until a real date
+  // is added, either here or by promoting a milestone below.
+  const [assignmentIndexes,setAssignmentIndexes]=useState(()=>initial.assignments.map((_,i)=>i).filter(i=>!!initial.assignments[i].due_at))
+  const [examIndexes,setExamIndexes]=useState(()=>initial.exams.map((_,i)=>i).filter(i=>!!initial.exams[i].exam_at))
+  const [milestoneDrafts,setMilestoneDrafts]=useState<MilestoneDraft[]>(()=>(initial.milestones??[]).map((m,i)=>({...m,key:`m${i}`,type:"assignment",date:""})))
   const [saving,setSaving]=useState(false),[message,setMessage]=useState(""),[courseId,setCourseId]=useState(upload.course_id||record.course_id||""),[identityConfirmed,setIdentityConfirmed]=useState(false),[cancelled,setCancelled]=useState(false),[metadataFields,setMetadataFields]=useState<string[]>([])
+  function updateMilestoneDraft(key:string,patch:Partial<MilestoneDraft>){setMilestoneDrafts(current=>current.map(m=>m.key===key?{...m,...patch}:m))}
+  function promoteMilestone(key:string){
+    const draft=milestoneDrafts.find(m=>m.key===key)
+    if(!draft||!draft.date)return
+    setMilestoneDrafts(current=>current.filter(m=>m.key!==key))
+    if(draft.type==="exam"){
+      const newIndex=result.exams.length
+      setResult(current=>({...current,exams:[...current.exams,{title:draft.title,exam_at:draft.date,location:null,topics_summary:draft.description}]}))
+      setExamIndexes(current=>[...current,newIndex])
+    }else{
+      const newIndex=result.assignments.length
+      setResult(current=>({...current,assignments:[...current.assignments,{title:draft.title,description:draft.description,due_at:draft.date,estimated_minutes:null}]}))
+      setAssignmentIndexes(current=>[...current,newIndex])
+    }
+  }
   const selectedAssignments=useMemo(()=>new Set(assignmentIndexes),[assignmentIndexes]),selectedExams=useMemo(()=>new Set(examIndexes),[examIndexes]),selectedCount=assignmentIndexes.length+examIndexes.length
   const courses=allCourses,selectedCourse=allCourses.find(course=>course.id===courseId)
   const documentCode=initial.course_code||null,documentTitle=initial.course_title||null
@@ -130,14 +189,37 @@ function NewSyllabusReview({record,upload,onApproved,onCourseChanged}:{record:Pr
   async function move(targetId:string){setMessage("");try{await reassociateSyllabusCourse(record.id,targetId);setCourseId(targetId);setIdentityConfirmed(true);onCourseChanged?.(targetId)}catch(reason){setMessage(reason instanceof Error?reason.message:"Unable to move this syllabus.")}}
   async function createIdentifiedCourse(){if(!documentCode)return;if(!window.confirm(`Add ${documentCode}${documentTitle?` — ${documentTitle}`:""} to your Pathly courses?`))return;try{const created=await addCourse({course_code:documentCode,course_name:documentTitle||documentCode});await move(created.id)}catch(reason){setMessage(reason instanceof Error?reason.message:"Unable to add this course.")}}
   async function approve(){setSaving(true);setMessage("");try{if(!courseId||(!explicitMatch&&!identityConfirmed))throw new Error("Confirm the syllabus course before adding items.");const courseMetadata=Object.fromEntries(Object.entries(metadata).filter(([key,value])=>metadataFields.includes(key)&&value!==null&&value!==undefined));const row=await approveSyllabus({processing:record,result,assignmentIndexes,examIndexes,courseId,courseMetadata});onApproved(row)}catch(reason){setMessage(reason instanceof Error?reason.message:"Unable to save reviewed items.")}finally{setSaving(false)}}
-  if(record.status==="approved")return <Card className="processing-review"><p className="save-success">Reviewed syllabus items were saved. Reopening this result will not create duplicates.</p></Card>
+  if(record.status==="approved"){
+    const savedExams=examIndexes.map(index=>result.exams[index]).filter(Boolean),savedAssignments=assignmentIndexes.map(index=>result.assignments[index]).filter(Boolean)
+    const parts=[]
+    if(savedExams.length)parts.push(`${savedExams.length} exam${savedExams.length===1?"":"s"}`)
+    if(savedAssignments.length)parts.push(`${savedAssignments.length} assignment${savedAssignments.length===1?"":"s"}`)
+    const summary=parts.length?`${parts.join(" and ")} added${selectedCourse?` to ${selectedCourse.course_code}`:""}`:"Reviewed syllabus items were saved."
+    const earliestDate=[...savedExams.map(item=>item.exam_at),...savedAssignments.map(item=>item.due_at)].filter((value):value is string=>!!value).sort((a,b)=>new Date(a).getTime()-new Date(b).getTime())[0]
+    return <Card className="processing-review"><p className="save-success">{summary}</p><p>Reopening this result will not create duplicates.</p>{earliestDate&&<Button variant="secondary" onClick={()=>navigate(`/calendar?date=${dateKey(earliestDate,profile?.timezone)}`)}>View in Calendar</Button>}</Card>
+  }
   if(cancelled)return <Card className="processing-review"><p className="eyebrow">Syllabus review paused</p><h3>Nothing was added.</h3><p>Your original file and extracted candidates remain available.</p><Button variant="secondary" onClick={()=>setCancelled(false)}>Return to review</Button></Card>
-  return <Card className="processing-review"><p className="eyebrow">Syllabus review required</p><h3>{selectedCount} items found</h3>
+  const datedFound=result.assignments.filter(a=>a.due_at).length+result.exams.filter(e=>e.exam_at).length
+  const undatedFound=milestoneDrafts.length+(result.assignments.length-result.assignments.filter(a=>a.due_at).length)+(result.exams.length-result.exams.filter(e=>e.exam_at).length)
+  return <Card className="processing-review"><p className="eyebrow">Syllabus review required</p><h3>{datedFound} dated item{datedFound===1?"":"s"} ready for Calendar</h3>{undatedFound>0&&<p className="review-note">{undatedFound} assignment type{undatedFound===1?"":"s"} found without dates.</p>}
     {explicitMatch?<p className="course-match-note">Course matched: <strong>{selectedCourse?.course_code} — {selectedCourse?.course_name}</strong>.</p>:identityConfirmed?<p className="course-match-note">Course confirmed by you: <strong>{selectedCourse?.course_code} — {selectedCourse?.course_name}</strong>.</p>:mismatch?<div className="course-mismatch" role="alert"><h4>This syllabus may belong to a different course.</h4><p>You uploaded it under {selectedCourse?.course_code} — {selectedCourse?.course_name}, but the document appears to be for {documentCode}{documentTitle?` — ${documentTitle}`:""}.</p><div className="form-actions">{identifiedCourse?<Button onClick={()=>void move(identifiedCourse.id)}>Move to {identifiedCourse.course_code}</Button>:<Button onClick={()=>void createIdentifiedCourse()}>Add this course</Button>}<Button variant="secondary" onClick={()=>setIdentityConfirmed(true)}>Keep under {selectedCourse?.course_code} anyway</Button><Button variant="quiet" onClick={()=>setCancelled(true)}>Cancel</Button></div></div>:<div className="course-unknown"><h4>We couldn't confidently identify the course from this syllabus.</h4><label>Use Pathly course<select value={courseId} onChange={event=>{setCourseId(event.target.value);setIdentityConfirmed(false)}}><option value="">Choose a course</option>{courses.map(course=><option key={course.id} value={course.id}>{course.course_code} — {course.course_name}</option>)}</select></label><div className="form-actions"><Button disabled={!courseId} onClick={()=>void move(courseId)}>Confirm selected course</Button><Button variant="quiet" onClick={()=>setCancelled(true)}>Cancel</Button></div></div>}
     <section className="course-metadata-review"><h4>Course details found</h4><p><strong>Course:</strong> {result.course_code||"Not found"} {result.course_title?`— ${result.course_title}`:""}</p>{(["instructor","credits","meeting_days","meeting_start","meeting_end"] as const).map(key=><label key={key}><input type="checkbox" checked={metadataFields.includes(key)} disabled={metadata[key]===null||metadata[key]===undefined} onChange={()=>setMetadataFields(current=>current.includes(key)?current.filter(value=>value!==key):[...current,key])}/><span>{key.replace(/_/g," ")}: {Array.isArray(metadata[key])?metadata[key]?.join(", ")||"Not found":metadata[key]??"Not found"}</span>{selectedCourse?.[key as keyof typeof selectedCourse]&&metadata[key]&&selectedCourse[key as keyof typeof selectedCourse]!==metadata[key]&&<small>Differs from the current value; check to apply.</small>}</label>)}</section>
-    <p>{result.course_summary}</p><p className="review-note">Select only accurate items. Edit titles and dates before adding them to the course and calendar.</p>
-    <h4>Assignments</h4>{result.assignments.length?result.assignments.map((item,index)=><div className="review-item" key={`assignment-${index}`}><input aria-label={`Include assignment ${item.title}`} type="checkbox" checked={selectedAssignments.has(index)} onChange={()=>toggle(index,assignmentIndexes,setAssignmentIndexes)}/><label>Type<select value="assignment" disabled><option>Assignment</option></select></label><label>Title<input value={item.title} onChange={event=>setResult(current=>({...current,assignments:current.assignments.map((value,i)=>i===index?{...value,title:event.target.value}:value)}))}/></label><label>Due date and time<input type="datetime-local" value={item.due_at?.slice(0,16)??""} onChange={event=>setResult(current=>({...current,assignments:current.assignments.map((value,i)=>i===index?{...value,due_at:event.target.value||null}:value)}))}/></label></div>):<p>No assignments found.</p>}
-    <h4>Exams</h4>{result.exams.length?result.exams.map((item,index)=><div className="review-item" key={`exam-${index}`}><input aria-label={`Include exam ${item.title}`} type="checkbox" checked={selectedExams.has(index)} onChange={()=>toggle(index,examIndexes,setExamIndexes)}/><label>Type<select value="exam" disabled><option>Exam</option></select></label><label>Title<input value={item.title} onChange={event=>setResult(current=>({...current,exams:current.exams.map((value,i)=>i===index?{...value,title:event.target.value}:value)}))}/></label><label>Exam date and time<input type="datetime-local" value={item.exam_at?.slice(0,16)??""} onChange={event=>setResult(current=>({...current,exams:current.exams.map((value,i)=>i===index?{...value,exam_at:event.target.value||null}:value)}))}/></label></div>):<p>No exams found.</p>}
-    <Button disabled={saving||selectedCount===0||(!explicitMatch&&!identityConfirmed)} onClick={()=>void approve()}>{saving?"Saving…":`Add ${selectedCount} selected item${selectedCount===1?"":"s"}`}</Button>{message&&<p className="form-message" role="alert">{message}</p>}
+    <SyllabusCourseOverview result={result}/><p className="review-note">Select only accurate items. Edit titles and dates before adding them to the course and calendar.</p>
+    <section className="course-milestones" id="syllabus-milestones-section">
+      <h4>{milestoneDrafts.length} course milestone{milestoneDrafts.length===1?"":"s"} found</h4>
+      {milestoneDrafts.length>0&&<p className="review-note">The source doesn't give these an exact date -- add one to include an item on your Calendar.</p>}
+      {milestoneDrafts.map(draft=><div className="review-item milestone-item" key={draft.key}>
+        <label>Title<input value={draft.title} onChange={event=>updateMilestoneDraft(draft.key,{title:event.target.value})}/></label>
+        {draft.context&&<span className="badge milestone-context">{draft.context}</span>}
+        <label>Type<select value={draft.type} onChange={event=>updateMilestoneDraft(draft.key,{type:event.target.value as "assignment"|"exam"})}><option value="assignment">Assignment</option><option value="exam">Exam</option></select></label>
+        <label>Add a date to include on Calendar<input type="datetime-local" value={draft.date} onChange={event=>updateMilestoneDraft(draft.key,{date:event.target.value})}/></label>
+        <Button type="button" variant="secondary" disabled={!draft.date} onClick={()=>promoteMilestone(draft.key)}>Add date</Button>
+      </div>)}
+    </section>
+    <h4>Dated items ready for Calendar</h4>
+    {result.assignments.length?result.assignments.map((item,index)=>{const hasDate=!!item.due_at;return <div className="review-item" key={`assignment-${index}`}><input aria-label={`Include assignment ${item.title}`} type="checkbox" disabled={!hasDate} checked={hasDate&&selectedAssignments.has(index)} onChange={()=>toggle(index,assignmentIndexes,setAssignmentIndexes)}/><label>Type<select value="assignment" disabled><option>Assignment</option></select></label><label>Title<input value={item.title} onChange={event=>setResult(current=>({...current,assignments:current.assignments.map((value,i)=>i===index?{...value,title:event.target.value}:value)}))}/></label><label>Due date and time<input type="datetime-local" value={item.due_at?.slice(0,16)??""} onChange={event=>{const value=event.target.value||null;setResult(current=>({...current,assignments:current.assignments.map((v,i)=>i===index?{...v,due_at:value}:v)}));setAssignmentIndexes(current=>{const has=current.includes(index);if(value&&!has)return [...current,index];if(!value&&has)return current.filter(i=>i!==index);return current})}}/></label></div>}):null}
+    {result.exams.length?result.exams.map((item,index)=>{const hasDate=!!item.exam_at;return <div className="review-item" key={`exam-${index}`}><input aria-label={`Include exam ${item.title}`} type="checkbox" disabled={!hasDate} checked={hasDate&&selectedExams.has(index)} onChange={()=>toggle(index,examIndexes,setExamIndexes)}/><label>Type<select value="exam" disabled><option>Exam</option></select></label><label>Title<input value={item.title} onChange={event=>setResult(current=>({...current,exams:current.exams.map((value,i)=>i===index?{...value,title:event.target.value}:value)}))}/></label><label>Exam date and time<input type="datetime-local" value={item.exam_at?.slice(0,16)??""} onChange={event=>{const value=event.target.value||null;setResult(current=>({...current,exams:current.exams.map((v,i)=>i===index?{...v,exam_at:value}:v)}));setExamIndexes(current=>{const has=current.includes(index);if(value&&!has)return [...current,index];if(!value&&has)return current.filter(i=>i!==index);return current})}}/></label></div>}):null}
+    {selectedCount===0?<div className="no-dated-items"><p>No dated items ready for Calendar.</p>{milestoneDrafts.length>0&&<Button type="button" variant="quiet" onClick={()=>document.getElementById("syllabus-milestones-section")?.scrollIntoView({behavior:"smooth",block:"start"})}>Add dates to milestones</Button>}</div>:<><p>{selectedCount} dated item{selectedCount===1?"":"s"} ready for Calendar.</p><Button disabled={saving||(!explicitMatch&&!identityConfirmed)} onClick={()=>void approve()}>{saving?"Saving…":`Add ${selectedCount} selected item${selectedCount===1?"":"s"}`}</Button></>}
+    {message&&<p className="form-message" role="alert">{message}</p>}
   </Card>
 }

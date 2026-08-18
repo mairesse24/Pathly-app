@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js@2.5.0/edge-runtime.d.ts"
 import { createClient } from "@supabase/supabase-js"
 import JSZip from "jszip"
-import { academicRecordSchema, degreeAuditSchema, lectureSchema, syllabusSchema } from "../_shared/processingSchemas.mjs"
+import { academicRecordSchema, degreeAuditSchema, lectureSchema, normalizeSyllabusResult, syllabusSchema } from "../_shared/processingSchemas.mjs"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -39,7 +39,7 @@ function validateResult(kind: string, value: unknown) {
   if (!value || typeof value !== "object") throw new Error("Structured result is not an object.")
   const result = value as Record<string, unknown>
   if (kind === "syllabus") {
-    if (!((typeof result.course_code === "string" || result.course_code === null) && (typeof result.course_title === "string" || result.course_title === null)) || typeof result.course_summary !== "string" || !Array.isArray(result.assignments) || !Array.isArray(result.exams)) throw new Error("Syllabus result failed validation.")
+    if (!((typeof result.course_code === "string" || result.course_code === null) && (typeof result.course_title === "string" || result.course_title === null)) || typeof result.course_summary !== "string" || !Array.isArray(result.milestones) || !Array.isArray(result.assignments) || !Array.isArray(result.exams)) throw new Error("Syllabus result failed validation.")
   } else if (kind === "lecture" && (typeof result.title !== "string" || typeof result.summary !== "string" || !Array.isArray(result.key_concepts) || !Array.isArray(result.flashcards) || !Array.isArray(result.practice_questions) || !Array.isArray(result.topics_worth_reviewing))) {
     throw new Error("Lecture result failed validation.")
   } else if (kind === "degree_audit" && (!Array.isArray(result.courses) || !Array.isArray(result.requirements))) {
@@ -110,7 +110,7 @@ Deno.serve(async (req: Request) => {
 
     await updateState({ processing_stage: "creating" })
     const instruction = upload.category === "syllabus"
-      ? "Extract only explicit syllabus facts. Extract course_code, course_title, instructor, credits, meeting_days, meeting_start, meeting_end, and location only when clearly printed in the document; otherwise return null. Preserve the explicit course code exactly enough for deterministic comparison. Use ISO 8601 with an offset when a time zone is stated; otherwise use null for uncertain dates. Never invent dates. Return assignments and exams for student review."
+      ? "Extract only explicit syllabus facts. Extract course_code, course_title, instructor, credits, meeting_days, meeting_start, meeting_end, and location only when clearly printed in the document; otherwise return null. Preserve the explicit course code exactly enough for deterministic comparison. Use ISO 8601 with an offset when a time zone is stated; otherwise use null for uncertain dates. Never invent, assume, or estimate a date that is not explicitly printed. For every schedule item: if the document gives it a concrete calendar date, put it in assignments (due_at set); if the document gives it a concrete date AND explicitly identifies it as an exam, test, midterm, or final exam, put it in exams (exam_at set) -- a final presentation, demo, or milestone is not an exam unless the document itself calls it one. Everything else -- anything identified only by a week number, module name, or period like 'Finals', with no concrete date -- belongs in milestones with its title, a short context label copied verbatim from the source (for example 'Week 4' or 'Finals'), and a brief description; do not put undated items in assignments or exams."
       : upload.category === "lecture"
         ? "Create faithful study materials from this lecture. Include a concise summary, key concepts, useful flashcards, practice questions, and topics worth reviewing. Do not add facts absent from the source."
         : upload.category === "degree_audit"
@@ -124,7 +124,7 @@ Deno.serve(async (req: Request) => {
     if (!claudeResponse.ok) throw new Error(`Anthropic request failed (${claudeResponse.status}): ${claude?.error?.message || "Unknown API error"}`)
     const text = claude.content?.find((item: { type: string }) => item.type === "text")?.text
     if (!text) throw new Error("Structured response contained no text result.")
-    const result = JSON.parse(text)
+    const result = upload.category === "syllabus" ? normalizeSyllabusResult(JSON.parse(text)) : JSON.parse(text)
     validateResult(upload.category, result)
 
     await updateState({ processing_stage: "saving" })
