@@ -81,6 +81,13 @@ export function AuthPage() {
     return <main className="auth-page"><div className="auth-card"><Brand/><p className="eyebrow">Account recovery</p><h1>Choose a new password.</h1><p>Enter a new password for your Pathly account to finish resetting it.</p><form onSubmit={submitNewPassword}><label>New password<div className="password-field"><input type={showPassword ? "text" : "password"} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} autoComplete="new-password" autoCapitalize="none" spellCheck={false} aria-describedby="recovery-password-guidance" required /><button type="button" className="password-toggle" onClick={() => setShowPassword((visible) => !visible)} aria-label={`${showPassword ? "Hide" : "Show"} password`} aria-pressed={showPassword}>{showPassword ? "Hide" : "Show"}</button></div><small id="recovery-password-guidance" className={newPassword.length >= PASSWORD_RECOMMENDED_LENGTH ? "password-guidance is-strong" : "password-guidance"}>{newPassword ? getPasswordLengthMessage(newPassword) : `${PASSWORD_MIN_LENGTH} characters minimum; ${PASSWORD_RECOMMENDED_LENGTH}+ recommended.`}</small></label><label>Confirm new password<input type={showPassword ? "text" : "password"} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} autoComplete="new-password" required /></label>{message && <p className="form-message" role="alert">{message}</p>}<Button type="submit" disabled={busy}>{busy ? "Updating…" : "Update password"}</Button></form></div></main>;
   }
 
+  // Reached only via the explicit navigation state set right after a successful account
+  // deletion (Settings signs the user out first), so there is no `user` here to gate on --
+  // this must render before the normal signed-out sign-in form, not after it.
+  if (!user && (location.state as { accountDeleted?: boolean } | null)?.accountDeleted) {
+    return <main className="auth-page"><div className="auth-card"><Brand/><p className="eyebrow">Account deleted</p><h1>Your Pathly account has been deleted.</h1><p>All of your Pathly data has been permanently removed. You're welcome to create a new account anytime.</p><Button type="button" onClick={() => navigate("/auth", { replace: true, state: null })}>Return to sign in</Button></div></main>;
+  }
+
   if (user) return <Navigate to={(location.state as { from?: string })?.from ?? "/dashboard"} replace />;
 
   async function submit(event: FormEvent) {

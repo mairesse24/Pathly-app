@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react"
+import { useNavigate } from "react-router-dom"
 import { PageHeader } from "../../components/layout/PageHeader"
 import { AcademicDetailsFields } from "../../components/profile/AcademicDetailsFields"
 import { StudyPreferencesFields } from "../../components/profile/StudyPreferencesFields"
@@ -7,6 +8,8 @@ import { Card } from "../../components/ui/Card"
 import { useAcademicData } from "../../context/AcademicDataContext"
 import { useProfile } from "../../context/ProfileContext"
 import { useTheme, type ThemePreference } from "../../context/ThemeContext"
+import { supabase } from "../../lib/supabase"
+import { deleteAccount } from "../../services/account"
 import {
   canvasUnavailableMessage,
   connectCanvasWithToken,
@@ -58,6 +61,7 @@ function formatBreakPreference(profile: ProfileMetadata | null) {
 export function SettingsPage() {
   const { profile, loading, error: profileError, updateProfile } = useProfile()
   const { refreshAcademicData } = useAcademicData()
+  const navigate = useNavigate()
   const [displayName, setDisplayName] = useState("")
   const [details, setDetails] = useState<AcademicDetailsInput>(emptyDetails)
   const [editing, setEditing] = useState(false)
@@ -69,6 +73,10 @@ export function SettingsPage() {
   const [message, setMessage] = useState("")
   const [error, setError] = useState("")
   const [storageUsed, setStorageUsed] = useState(0)
+  const [deleteConfirming, setDeleteConfirming] = useState(false)
+  const [deleteConfirmText, setDeleteConfirmText] = useState("")
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState("")
   const { preference, setPreference } = useTheme()
 
   useEffect(() => {
@@ -151,6 +159,23 @@ export function SettingsPage() {
     } finally {
       setPreferencesSaving(false)
     }
+  }
+
+  async function confirmDeleteAccount() {
+    setDeleting(true)
+    setDeleteError("")
+    try {
+      await deleteAccount()
+    } catch (reason) {
+      setDeleteError(reason instanceof Error ? reason.message : "Unable to delete your account right now.")
+      setDeleting(false)
+      return
+    }
+    // The account no longer exists server-side at this point, so this sign-out is only
+    // clearing the local session -- its own outcome must not block returning to a signed-out
+    // screen, which is why failures here are swallowed rather than surfaced as an error.
+    await supabase.auth.signOut().catch(() => undefined)
+    navigate("/auth", { replace: true, state: { accountDeleted: true } })
   }
 
   return (
@@ -306,6 +331,61 @@ export function SettingsPage() {
             Only source files uploaded to your account count toward this limit.
             Deleting a file reclaims its space.
           </p>
+        </Card>
+
+        <Card className="danger-zone">
+          <p className="eyebrow">Account</p>
+          <h3>Delete your Pathly account</h3>
+          <p>
+            This permanently deletes your Pathly account and everything tied to it: your
+            profile and study preferences, courses, assignments, exams, study sessions,
+            reflections, uploaded files, organized notes and flashcards, degree-planning data,
+            and any connected Canvas account. This cannot be undone.
+          </p>
+          {!deleteConfirming ? (
+            <Button
+              type="button"
+              variant="secondary"
+              className="btn-danger"
+              onClick={() => { setDeleteConfirming(true); setDeleteConfirmText(""); setDeleteError("") }}
+            >
+              Delete my account
+            </Button>
+          ) : (
+            <div className="canvas-token-panel" role="dialog" aria-modal="true" aria-label="Confirm account deletion">
+              <h4>Are you sure you want to delete your account?</h4>
+              <p>This is permanent. Type <strong>DELETE</strong> below to confirm.</p>
+              <label className="canvas-domain-field">
+                Type DELETE to confirm
+                <input
+                  value={deleteConfirmText}
+                  onChange={(event) => setDeleteConfirmText(event.target.value)}
+                  placeholder="DELETE"
+                  autoComplete="off"
+                  disabled={deleting}
+                />
+              </label>
+              {deleteError && <p className="form-message" role="alert">{deleteError}</p>}
+              <div className="form-actions">
+                <Button
+                  type="button"
+                  className="btn-danger"
+                  disabled={deleteConfirmText.trim() !== "DELETE" || deleting}
+                  onClick={() => void confirmDeleteAccount()}
+                >
+                  {deleting ? "Deleting…" : "Permanently delete my account"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="quiet"
+                  disabled={deleting}
+                  onClick={() => { setDeleteConfirming(false); setDeleteConfirmText(""); setDeleteError("") }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
         </Card>
       </main>
     </>
