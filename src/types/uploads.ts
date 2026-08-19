@@ -87,7 +87,16 @@ export type DegreeAuditRequirement = {
   choice_requirement_text: string | null
   details: string | null
 }
+// document_type distinguishes a personal degree audit (a specific
+// student's own completed/in-progress coursework) from a degree/transfer
+// guide (a program's curriculum with no student's completion status) and
+// from a document Pathly can't recognize as either. Only "personal_audit"
+// may ever carry a completed/in_progress course status -- see
+// normalizeDegreeAuditResult in supabase/functions/_shared/processingSchemas.mjs,
+// which enforces this server-side regardless of model output.
+export type DegreeAuditDocumentType = "personal_audit" | "program_guide" | "unsupported"
 export type DegreeAuditResult = AcademicRecordResult & {
+  document_type: DegreeAuditDocumentType
   university: string | null
   major: string | null
   catalog_year: number | null

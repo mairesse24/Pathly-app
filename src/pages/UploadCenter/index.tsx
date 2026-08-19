@@ -288,6 +288,7 @@ export function UploadCenterPage() {
             </p>
           </div>
         </div>
+        <p className="academic-disclaimer">AI-generated summaries and extracted dates can make mistakes. Review important information before relying on it.</p>
         <Card
           className="upload-zone"
           onClick={(event) => {
@@ -354,14 +355,7 @@ export function UploadCenterPage() {
               <strong>Selected:</strong> {file.name} · {formatBytes(file.size)}
             </p>
           )}
-          {sensitive && (
-            <p className="privacy-notice">
-              <strong>Sensitive academic record.</strong> Only you can access
-              this source file. Before uploading, remove information you don&apos;t
-              want Pathly to process, including Social Security numbers,
-              financial information, and addresses.
-            </p>
-          )}
+          <p className="privacy-notice"><strong>{sensitive?"Sensitive academic record. ":"Review before uploading. "}</strong>Before uploading, review your file and remove information Pathly doesn&apos;t need. Do not upload Social Security numbers, passwords, financial details, medical records, or other unnecessary sensitive personal information.</p>
           <Button onClick={upload} disabled={!file || state === "uploading"}>
             {state === "uploading" ? "Uploading…" : "Upload file"}
           </Button>
@@ -414,7 +408,7 @@ export function UploadCenterPage() {
                     ? "Pathly can turn this material into a summary, key concepts, flashcards, and practice questions."
                     : row.category === "unofficial_transcript"
                       ? "Pathly can identify completed and in-progress courses from this document. You'll review everything before it is added."
-                      : "Pathly can identify completed and in-progress courses from this degree audit. You'll review everything before it is added."
+                      : "Pathly will check whether this is your personal degree audit or a degree/transfer guide, then show you what it found either way. You'll review everything before anything is added."
 
               return (
                 <div key={row.id} id={`upload-${row.id}`} className="upload-with-review">

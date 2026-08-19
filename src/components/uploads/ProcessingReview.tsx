@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { Button } from "../ui/Button"
 import { Card } from "../ui/Card"
 import { approveSyllabus, confirmAcademicRecord, confirmDegreeAudit } from "../../services/processing"
+import { getActiveUserDegreePlan } from "../../services/degreePlanning"
 import type { AcademicRecordResult, DegreeAuditResult, LectureResult, ProcessingResultRecord, SyllabusResult } from "../../types/uploads"
 import type { UploadedFileRecord } from "../../types/uploads"
 import { useAcademicData } from "../../context/AcademicDataContext"
@@ -67,6 +68,75 @@ function formatSyllabusDate(value:string,timeZone?:string|null) {
 }
 
 function DegreeAuditReview({ record, onApproved }: { record: ProcessingResultRecord; onApproved: (row: ProcessingResultRecord, sourceDeleted?: boolean) => void }) {
+  // Records saved before document_type existed have no field to read here --
+  // they were only ever produced from a real personal audit, so that stays
+  // the safe default for them.
+  const documentType = (record.result as DegreeAuditResult).document_type || "personal_audit"
+  if (documentType === "unsupported") return <UnsupportedDegreeDocumentReview/>
+  if (documentType === "program_guide") return <DegreeGuideReview record={record} onApproved={onApproved}/>
+  return <PersonalDegreeAuditReview record={record} onApproved={onApproved}/>
+}
+
+function UnsupportedDegreeDocumentReview() {
+  return <Card className="processing-review">
+    <p className="eyebrow">Document not recognized</p>
+    <h3>Pathly couldn&apos;t recognize this as a degree audit or a degree/transfer guide.</h3>
+    <p className="review-note">Nothing was extracted or saved, and nothing was marked as failed -- Pathly just doesn&apos;t support this kind of document yet. Your original file is still safely stored. You can delete it or try uploading a different document, such as an official degree audit or a program/transfer guide.</p>
+  </Card>
+}
+
+function DegreeGuideReview({ record, onApproved }: { record: ProcessingResultRecord; onApproved: (row: ProcessingResultRecord, sourceDeleted?: boolean) => void }) {
+  const raw = record.result as DegreeAuditResult
+  // A program guide never carries a completed/in-progress signal -- forced
+  // here too, in addition to the server-side normalization, so an edit
+  // can't reintroduce one.
+  const initial = { ...raw, courses: [], total_credits_completed: null, requirements: raw.requirements.map(requirement => ({ ...requirement, status: "unclear" as const, applied_courses: [] })) }
+  const [result, setResult] = useState(() => structuredClone(initial))
+  const [requirementIndexes, setRequirementIndexes] = useState(() => initial.requirements.map((_, index) => index))
+  const [deleteOriginal, setDeleteOriginal] = useState(false)
+  const [saving, setSaving] = useState(false); const [message, setMessage] = useState("")
+  const [hasActivePlan, setHasActivePlan] = useState(false)
+  const selectedRequirements = useMemo(() => new Set(requirementIndexes), [requirementIndexes])
+  const toggle = (index: number, current: number[], set: (value: number[]) => void) => set(current.includes(index) ? current.filter(value => value !== index) : [...current, index])
+  useEffect(() => { void getActiveUserDegreePlan().then(plan => setHasActivePlan(!!plan)).catch(() => {}) }, [])
+  async function confirm() {
+    setSaving(true); setMessage("")
+    try {
+      const requirements = requirementIndexes.map(index => ({ ...result.requirements[index], status: "unclear" as const, applied_courses: [] })).filter(Boolean)
+      onApproved(await confirmDegreeAudit(record, result, [], requirements, deleteOriginal), deleteOriginal)
+    } catch (reason) { setMessage(reason instanceof Error ? reason.message : "Unable to save this degree plan.") }
+    finally { setSaving(false) }
+  }
+  if (record.status === "approved") return <Card className="processing-review"><p className="save-success">This program guide was saved as your degree plan.</p></Card>
+  return <Card className="processing-review">
+    <p className="eyebrow">Degree/transfer guide detected</p>
+    <h3>This looks like a program guide, not your personal degree audit.</h3>
+    <p className="review-note">This appears to be a degree/transfer guide rather than your personal degree audit. It can help Pathly understand your program requirements, but it does not show which courses you have completed.</p>
+    <p className="review-note">Nothing below is marked completed or in progress -- a program guide never shows that. Your personal progress (completed and in-progress courses you&apos;ve added or confirmed elsewhere) stays separate and is never changed by confirming a guide.</p>
+    {hasActivePlan && <p className="review-note">You already have an active degree plan on file. Confirming this guide will replace that plan&apos;s requirement snapshot with this one; your saved completed and in-progress courses are not affected.</p>}
+    <div className="degree-audit-metadata">
+      <label>University<input value={result.university || ""} onChange={event => setResult(current => ({ ...current, university: event.target.value || null }))}/></label>
+      <label>Program<input value={result.major || ""} onChange={event => setResult(current => ({ ...current, major: event.target.value || null }))}/></label>
+      <label>Catalog year<input type="number" min="1900" max="2200" value={result.catalog_year || ""} onChange={event => setResult(current => ({ ...current, catalog_year: event.target.value ? Number(event.target.value) : null }))}/></label>
+      <label>Minimum credits required<input type="number" min="0" step="0.5" value={result.total_credits_required ?? ""} onChange={event => setResult(current => ({ ...current, total_credits_required: event.target.value ? Number(event.target.value) : null }))}/></label>
+    </div>
+    <h4>Requirement groups found</h4>
+    {result.requirements.length ? result.requirements.map((requirement, index) => <div className="review-item degree-requirement-review" key={`${requirement.requirement_label}-${index}`}>
+      <input type="checkbox" aria-label={`Include ${requirement.requirement_label}`} checked={selectedRequirements.has(index)} onChange={() => toggle(index, requirementIndexes, setRequirementIndexes)}/>
+      <label>Requirement name<input value={requirement.requirement_label} onChange={event => setResult(current => ({ ...current, requirements: current.requirements.map((item, i) => i === index ? { ...item, requirement_label: event.target.value } : item) }))}/></label>
+      <label>Required course codes<input value={requirement.required_course_codes.join(", ")} onChange={event => setResult(current => ({ ...current, requirements: current.requirements.map((item, i) => i === index ? { ...item, required_course_codes: event.target.value.split(",").map(value => value.trim()).filter(Boolean) } : item) }))}/></label>
+      <label>Credits required<input type="number" min="0" step="0.5" value={requirement.credits_required ?? ""} onChange={event => setResult(current => ({ ...current, requirements: current.requirements.map((item, i) => i === index ? { ...item, credits_required: event.target.value ? Number(event.target.value) : null } : item) }))}/></label>
+      <label>Choice or elective wording<textarea value={requirement.choice_requirement_text || ""} onChange={event => setResult(current => ({ ...current, requirements: current.requirements.map((item, i) => i === index ? { ...item, choice_requirement_text: event.target.value || null } : item) }))}/></label>
+      <label>Details (recommended year/semester, transfer or TCCNS equivalents, etc.)<textarea value={requirement.details || ""} onChange={event => setResult(current => ({ ...current, requirements: current.requirements.map((item, i) => i === index ? { ...item, details: event.target.value || null } : item) }))}/></label>
+      <p className="requirement-status-note">Status: not tracked from a program guide.</p>
+    </div>) : <p>No requirement groups were found. Pathly will not invent missing requirements.</p>}
+    <label className="delete-source-choice"><input type="checkbox" checked={deleteOriginal} onChange={event => setDeleteOriginal(event.target.checked)}/><span><strong>Delete original file after confirmation</strong><small>Optional -- a program guide contains no personal information, so keeping it is safe.</small></span></label>
+    <Button disabled={saving || requirementIndexes.length === 0} onClick={() => void confirm()}>{saving ? "Saving…" : "Use as degree plan"}</Button>
+    {message && <p className="form-message" role="alert">{message}</p>}
+  </Card>
+}
+
+function PersonalDegreeAuditReview({ record, onApproved }: { record: ProcessingResultRecord; onApproved: (row: ProcessingResultRecord, sourceDeleted?: boolean) => void }) {
   const raw = record.result as DegreeAuditResult
   const initial = { ...raw, requirements: raw.requirements.map(requirement => ({ ...requirement, applied_courses: requirement.applied_courses || [] })) }
   const [result, setResult] = useState(() => structuredClone(initial))

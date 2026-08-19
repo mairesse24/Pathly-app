@@ -12,6 +12,7 @@
     "test:active-planning": "node --experimental-strip-types --test src/utils/activePlanning.test.ts",
     "test:smart-planning": "node --experimental-strip-types --test src/utils/smartPlanning.test.ts",
     "test:processing-schemas": "node scripts/validate-processing-schemas.mjs",
+    "test:degree-guide-classification": "node scripts/validate-degree-guide-classification.mjs",
     "test:syllabus-classification": "node scripts/validate-syllabus-classification.mjs",
     "test:week-only-syllabus": "node scripts/validate-week-only-syllabus.mjs",
     "test:course-roadmap-migration": "node scripts/validate-course-roadmap-migration.mjs",

@@ -86,6 +86,7 @@ export const academicRecordSchema = {
 export const degreeAuditSchema = {
   type: "object", additionalProperties: false,
   properties: {
+    document_type: { type: "string", enum: ["personal_audit", "program_guide", "unsupported"] },
     university: { anyOf: [{ type: "string" }, { type: "null" }] },
     major: { anyOf: [{ type: "string" }, { type: "null" }] },
     catalog_year: { anyOf: [{ type: "integer" }, { type: "null" }] },
@@ -106,5 +107,24 @@ export const degreeAuditSchema = {
       details: { anyOf: [{ type: "string" }, { type: "null" }] },
     }, required: ["requirement_label", "status", "credits_required", "credits_completed", "credits_remaining", "required_course_codes", "applied_courses", "choice_requirement_text", "details"] } },
   },
-  required: ["university", "major", "catalog_year", "total_credits_required", "total_credits_completed", "courses", "requirements"],
+  required: ["document_type", "university", "major", "catalog_year", "total_credits_required", "total_credits_completed", "courses", "requirements"],
+}
+
+// Safety net independent of how well the model followed the classification
+// instruction: a document the model marked as a program/transfer guide (or
+// as unsupported) must never carry a specific student's completion signal,
+// no matter what the model actually put in courses/requirements. A guide
+// describes a curriculum, not a person, so completed/in-progress status and
+// requirement-application data are always stripped here rather than trusted
+// from the model output alone.
+export function normalizeDegreeAuditResult(value) {
+  const documentType = value.document_type === "program_guide" || value.document_type === "unsupported" ? value.document_type : "personal_audit"
+  if (documentType === "unsupported") {
+    return { document_type: documentType, university: null, major: null, catalog_year: null, total_credits_required: null, total_credits_completed: null, courses: [], requirements: [] }
+  }
+  if (documentType === "program_guide") {
+    const requirements = (Array.isArray(value.requirements) ? value.requirements : []).map((item) => ({ ...item, status: "unclear", applied_courses: [] }))
+    return { ...value, document_type: documentType, courses: [], total_credits_completed: null, requirements }
+  }
+  return { ...value, document_type: documentType }
 }
