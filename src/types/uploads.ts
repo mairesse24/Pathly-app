@@ -22,10 +22,19 @@ export type UploadedFileRecord = {
   updated_at: string
 }
 
-export type SyllabusMilestone = {
-  title: string
-  context: string | null
+// A week/period row from a syllabus schedule table (e.g. "Week 4 -- UI
+// Design & Accessibility; Assignment 1 due"). This is never itself a
+// calendar item -- it's the course roadmap's raw material. `deliverable`
+// carries any assignment/milestone text mentioned for that period verbatim;
+// it does not imply that item also exists as a dated `assignments` row.
+// `date` is only ever set from a concrete date actually printed next to
+// this row, never inferred from the week number.
+export type SyllabusRoadmapEntry = {
+  period_label: string | null
+  topic: string
   description: string | null
+  deliverable: string | null
+  date: string | null
 }
 export type SyllabusResult = {
   course_code: string | null
@@ -42,7 +51,7 @@ export type SyllabusResult = {
     label: string
     value: string
   }> | null
-  milestones: SyllabusMilestone[]
+  roadmap: SyllabusRoadmapEntry[]
   assignments: Array<{ title: string; description: string | null; due_at: string | null; estimated_minutes: number | null }>
   exams: Array<{ title: string; exam_at: string | null; location: string | null; topics_summary: string | null }>
 }

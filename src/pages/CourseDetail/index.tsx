@@ -18,9 +18,11 @@ import {
   listUploads,
 } from "../../services/uploads"
 import { processUpload } from "../../services/processing"
+import { buildRoadmapStudyText, listCourseRoadmap } from "../../services/courseRoadmap"
 
 import type { ProcessingResultRecord, ProcessingStage, UploadedFileRecord } from "../../types/uploads"
-import { formatInstant } from "../../utils/dateTime"
+import type { CourseRoadmapEntryRecord } from "../../types/academic"
+import { formatDateKey, formatInstant } from "../../utils/dateTime"
 import { AddMaterialDialog } from "../../components/uploads/AddMaterialDialog"
 import { ProcessingReview } from "../../components/uploads/ProcessingReview"
 import { OrganizeNotes } from "../../components/study/OrganizeNotes"
@@ -46,6 +48,10 @@ export function CourseDetailPage() {
   const [fileError, setFileError] = useState("")
   const [materialOpen, setMaterialOpen] = useState(false)
 
+  const [roadmap, setRoadmap] = useState<CourseRoadmapEntryRecord[]>([])
+  const [roadmapError, setRoadmapError] = useState("")
+  const [notesPrefill, setNotesPrefill] = useState<{ title: string; text: string; requestedAt: number } | null>(null)
+
   const [reviewUpload, setReviewUpload] = useState<UploadedFileRecord | null>(null)
   const [reviewResult, setReviewResult] = useState<ProcessingResultRecord | null>(null)
   const [reviewStage, setReviewStage] = useState<ProcessingStage | null>(null)
@@ -64,6 +70,24 @@ export function CourseDetailPage() {
         ),
       )
   }, [courseId])
+
+  useEffect(() => {
+    if (!courseId) return
+    listCourseRoadmap(courseId)
+      .then(setRoadmap)
+      .catch((reason: unknown) =>
+        setRoadmapError(
+          reason instanceof Error
+            ? reason.message
+            : "Unable to load the course roadmap.",
+        ),
+      )
+  }, [courseId])
+
+  function studyThisTopic(entry: CourseRoadmapEntryRecord) {
+    setNotesPrefill({ title: entry.topic, text: buildRoadmapStudyText(entry), requestedAt: Date.now() })
+    document.getElementById("organize-notes-section")?.scrollIntoView({ behavior: "smooth", block: "start" })
+  }
 
   async function startReview(row: UploadedFileRecord) {
     if (row.category !== "syllabus" && row.category !== "lecture") return
@@ -185,6 +209,29 @@ export function CourseDetailPage() {
                 `${item.title} · ${formatInstant(item.start_at, profile?.timezone, { dateStyle: "medium", timeStyle: "short" })}`,
             )}
           />
+          <Card className="course-roadmap-card">
+            <p className="eyebrow">Course roadmap</p>
+            {roadmapError ? (
+              <p className="form-message">{roadmapError}</p>
+            ) : roadmap.length ? (
+              <ul className="plain-list roadmap-entry-list">
+                {roadmap.map((entry) => (
+                  <li key={entry.id} className="roadmap-entry-row">
+                    <div>
+                      {entry.period_label && <span className="badge">{entry.period_label}</span>}
+                      <strong>{entry.topic}</strong>
+                      {entry.deliverable && <small>Deliverable: {entry.deliverable}</small>}
+                      {entry.entry_date && <small>{formatDateKey(entry.entry_date, { month: "short", day: "numeric", year: "numeric" })}</small>}
+                      {entry.description && <small>{entry.description}</small>}
+                    </div>
+                    <Button variant="quiet" onClick={() => studyThisTopic(entry)}>Study this topic</Button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>No week-by-week roadmap yet. Review an uploaded syllabus to add one.</p>
+            )}
+          </Card>
           <Card>
             <p className="eyebrow">Course files</p>
             {fileError ? (
@@ -230,7 +277,7 @@ export function CourseDetailPage() {
               Upload course material
             </Button>
           </Card>
-          <OrganizeNotes courseId={course.id} />
+          <OrganizeNotes courseId={course.id} prefill={notesPrefill} />
         </div>
       </main>
       <AddMaterialDialog open={materialOpen} onClose={() => setMaterialOpen(false)} context={{ origin: "course", courseId: course.id }} onUploaded={(row) => { setMaterialOpen(false); setFiles((current) => [row, ...current]); void startReview(row) }} />
@@ -251,6 +298,7 @@ export function CourseDetailPage() {
             onApproved={(approved, sourceDeleted) => {
               void refreshAcademicData()
               void listUploads(course.id).then(setFiles)
+              void listCourseRoadmap(course.id).then(setRoadmap)
               if (sourceDeleted) { closeReview(); return }
               setReviewResult(approved)
             }}

@@ -4,13 +4,13 @@ import { normalizeSyllabusResult } from "../supabase/functions/_shared/processin
 // Reproduces the real reported bug shape: a syllabus schedule table where
 // holiday/no-class rows carry a concrete date, same as real deliverables.
 // Even if the model still put these in assignments/exams, the normalizer's
-// holiday safety net must demote them to milestones regardless of date.
+// holiday safety net must demote them to roadmap entries regardless of date.
 const base = {
   course_code: "CSCE 3600.004",
   course_title: "Systems Programming",
   instructor: null, credits: null, meeting_days: null, meeting_start: null, meeting_end: null, location: null,
   course_summary: "Systems programming course.",
-  milestones: [],
+  roadmap: [],
 }
 
 const withHolidaysAndTopics = normalizeSyllabusResult({
@@ -34,12 +34,12 @@ assert.deepEqual(withHolidaysAndTopics.assignments.map((a) => a.title).sort(), [
 assert.equal(withHolidaysAndTopics.exams.length, 1, "only the explicitly-labeled exam must remain an exam")
 assert.equal(withHolidaysAndTopics.exams[0].title, "EXAM I")
 
-// Holiday/no-class rows are demoted to milestones even though they carry a
-// concrete date -- the safety net checks for holiday language, not just
-// date-presence.
-assert.ok(withHolidaysAndTopics.milestones.some((m) => m.title === "Labor Day Holiday"), "Labor Day Holiday must be demoted to a milestone")
-assert.ok(withHolidaysAndTopics.milestones.some((m) => m.title === "Thanksgiving Holiday"), "Thanksgiving Holiday must be demoted to a milestone")
-assert.ok(withHolidaysAndTopics.milestones.some((m) => m.title === "Fall Break"), "Fall Break must be demoted to a milestone even though it was extracted into exams")
+// Holiday/no-class rows are demoted to roadmap entries even though they
+// carry a concrete date -- the safety net checks for holiday language, not
+// just date-presence.
+assert.ok(withHolidaysAndTopics.roadmap.some((entry) => entry.topic === "Labor Day Holiday"), "Labor Day Holiday must be demoted to a roadmap entry")
+assert.ok(withHolidaysAndTopics.roadmap.some((entry) => entry.topic === "Thanksgiving Holiday"), "Thanksgiving Holiday must be demoted to a roadmap entry")
+assert.ok(withHolidaysAndTopics.roadmap.some((entry) => entry.topic === "Fall Break"), "Fall Break must be demoted to a roadmap entry even though it was extracted into exams")
 assert.ok(!withHolidaysAndTopics.assignments.some((a) => /holiday/i.test(a.title)), "no holiday-titled row may remain in assignments")
 assert.ok(!withHolidaysAndTopics.exams.some((e) => /break/i.test(e.title)), "no break-titled row may remain in exams")
 
@@ -52,4 +52,4 @@ const noFalsePositive = normalizeSyllabusResult({
 })
 assert.equal(noFalsePositive.assignments.length, 1, "\"Classify the Grammar\" must not be caught by the no-class/holiday pattern")
 
-console.log("holiday/no-class syllabus rows normalize to milestones without touching real deliverables")
+console.log("holiday/no-class syllabus rows normalize to roadmap without touching real deliverables")

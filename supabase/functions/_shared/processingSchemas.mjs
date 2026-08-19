@@ -14,23 +14,26 @@ function isNonDeliverable(title) {
 // exam) when it (a) carries a concrete date and (b) isn't an obvious
 // holiday/no-class notice. Anything still placed in assignments/exams
 // without a date, an "exam" that isn't actually dated, or a holiday-shaped
-// title, is demoted to a milestone instead of silently becoming a calendar
-// item that isn't really a student deliverable.
+// title, is demoted to a roadmap entry instead of silently becoming a
+// calendar item that isn't really a student deliverable. Roadmap entries
+// themselves are never calendar items -- they're the course's week/period
+// structure (topic + optional deliverable text), reviewed and persisted
+// separately from assignments/exams.
 export function normalizeSyllabusResult(value) {
-  const milestones = Array.isArray(value.milestones) ? [...value.milestones] : []
+  const roadmap = (Array.isArray(value.roadmap) ? value.roadmap : []).filter((item) => item && typeof item.topic === "string" && item.topic.trim())
   const assignments = []
   for (const item of Array.isArray(value.assignments) ? value.assignments : []) {
     if (!item || typeof item.title !== "string" || !item.title.trim()) continue
     if (typeof item.due_at === "string" && item.due_at && !isNonDeliverable(item.title)) assignments.push(item)
-    else milestones.push({ title: item.title, context: null, description: typeof item.description === "string" ? item.description : null })
+    else roadmap.push({ period_label: null, topic: item.title, description: typeof item.description === "string" ? item.description : null, deliverable: null, date: null })
   }
   const exams = []
   for (const item of Array.isArray(value.exams) ? value.exams : []) {
     if (!item || typeof item.title !== "string" || !item.title.trim()) continue
     if (typeof item.exam_at === "string" && item.exam_at && !isNonDeliverable(item.title)) exams.push(item)
-    else milestones.push({ title: item.title, context: null, description: typeof item.topics_summary === "string" ? item.topics_summary : null })
+    else roadmap.push({ period_label: null, topic: item.title, description: typeof item.topics_summary === "string" ? item.topics_summary : null, deliverable: null, date: null })
   }
-  return { ...value, milestones, assignments, exams }
+  return { ...value, roadmap, assignments, exams }
 }
 
 export const syllabusSchema = {
@@ -45,16 +48,16 @@ export const syllabusSchema = {
     meeting_end: { anyOf: [{ type: "string" }, { type: "null" }] },
     location: { anyOf: [{ type: "string" }, { type: "null" }] },
     course_summary: { type: "string" },
-    milestones: { type: "array", items: { type: "object", additionalProperties: false, properties: {
-      title: { type: "string" }, context: { type: ["string", "null"] }, description: { type: ["string", "null"] },
-    }, required: ["title", "context", "description"] } },
+    roadmap: { type: "array", items: { type: "object", additionalProperties: false, properties: {
+      period_label: { type: ["string", "null"] }, topic: { type: "string" }, description: { type: ["string", "null"] }, deliverable: { type: ["string", "null"] }, date: { type: ["string", "null"] },
+    }, required: ["period_label", "topic", "description", "deliverable", "date"] } },
     assignments: { type: "array", items: { type: "object", additionalProperties: false, properties: {
       title: { type: "string" }, description: { type: ["string", "null"] }, due_at: { type: ["string", "null"] }, estimated_minutes: { type: ["integer", "null"] },
     }, required: ["title", "description", "due_at", "estimated_minutes"] } },
     exams: { type: "array", items: { type: "object", additionalProperties: false, properties: {
       title: { type: "string" }, exam_at: { type: ["string", "null"] }, location: { type: ["string", "null"] }, topics_summary: { type: ["string", "null"] },
     }, required: ["title", "exam_at", "location", "topics_summary"] } },
-  }, required: ["course_code", "course_title", "instructor", "credits", "meeting_days", "meeting_start", "meeting_end", "location", "course_summary", "milestones", "assignments", "exams"],
+  }, required: ["course_code", "course_title", "instructor", "credits", "meeting_days", "meeting_start", "meeting_end", "location", "course_summary", "roadmap", "assignments", "exams"],
 }
 
 export const lectureSchema = {

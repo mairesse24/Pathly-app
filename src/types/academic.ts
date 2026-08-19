@@ -51,6 +51,18 @@ export type ExamRecord = {
   topics_summary: string | null
   source: string
 }
+export type CourseRoadmapEntryRecord = {
+  id: string
+  user_id: string
+  course_id: string
+  period_label: string | null
+  topic: string
+  description: string | null
+  deliverable: string | null
+  entry_date: string | null
+  source: string
+  sort_order: number
+}
 export type StudySessionRecord = {
   id: string
   user_id: string
