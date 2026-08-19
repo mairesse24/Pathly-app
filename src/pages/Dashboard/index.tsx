@@ -17,6 +17,7 @@ import { Icon } from "../../components/ui/Icon"
 import { useAcademicData } from "../../context/AcademicDataContext"
 
 import { useProfile } from "../../context/ProfileContext"
+import { buildComingUpItems } from "../../utils/comingUp"
 import { dateKey, dayGreeting, formatInstant, todayKey } from "../../utils/dateTime"
 import { buildSmartPlan } from "../../utils/smartPlanning"
 export function DashboardPage() {
@@ -47,7 +48,10 @@ export function DashboardPage() {
 
   const navigate = useNavigate()
 
-  const active = assignments.filter((a) => a.status !== "completed")
+  const comingUpItems = useMemo(
+    () => buildComingUpItems({ assignments, exams, studySessions, courses, timezone }),
+    [assignments, exams, studySessions, courses, timezone],
+  )
 
   const plan = useMemo(
     () => buildSmartPlan({
@@ -209,33 +213,25 @@ export function DashboardPage() {
               </button>
             </div>
             <div className="schedule-list">
-              {active
-
-                .filter((a) => !sameDay(a.due_at))
-
-                .slice(0, 4)
-
-                .map((a) => (
-                  <div key={a.id}>
-                    <b>
-                      {a.due_at
-                        ? formatInstant(a.due_at, timezone, {
-                            month: "short",
-                            day: "numeric",
-                          })
-                        : "Soon"}
-                    </b>
-                    <span className="event-dot sage" />
-                    <p>
-                      <strong>{a.title}</strong>
-                      <small>
-                        {courseName(a.course_id)} ·{" "}
-                        {a.status.replace(/_/g, " ")}
-                      </small>
-                    </p>
-                  </div>
-                ))}
-              {!active.length && <p>You’re all caught up.</p>}
+              {comingUpItems.slice(0, 4).map((item) => (
+                <div key={`${item.kind}-${item.id}`}>
+                  <b>
+                    {formatInstant(item.at, timezone, {
+                      month: "short",
+                      day: "numeric",
+                    })}
+                  </b>
+                  <span className={`event-dot ${item.kind === "exam" ? "rose" : item.kind === "session" ? "blue" : "sage"}`} />
+                  <p>
+                    <strong>{item.title}</strong>
+                    <small>
+                      {item.courseCode ?? "Study session"}
+                      {item.detail ? ` · ${item.detail}` : ""}
+                    </small>
+                  </p>
+                </div>
+              ))}
+              {comingUpItems.length === 0 && <p>Nothing coming up yet.</p>}
             </div>
           </Card>
           <ReflectionCard
