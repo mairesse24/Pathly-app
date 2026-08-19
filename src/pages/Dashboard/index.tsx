@@ -213,7 +213,7 @@ export function DashboardPage() {
               </button>
             </div>
             <div className="schedule-list">
-              {comingUpItems.slice(0, 4).map((item) => (
+              {comingUpItems.slice(0, 5).map((item) => (
                 <div key={`${item.kind}-${item.id}`}>
                   <b>
                     {formatInstant(item.at, timezone, {
