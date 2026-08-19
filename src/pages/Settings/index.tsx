@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react"
 import { PageHeader } from "../../components/layout/PageHeader"
 import { AcademicDetailsFields } from "../../components/profile/AcademicDetailsFields"
+import { StudyPreferencesFields } from "../../components/profile/StudyPreferencesFields"
 import { Button } from "../../components/ui/Button"
 import { Card } from "../../components/ui/Card"
 import { useAcademicData } from "../../context/AcademicDataContext"
@@ -22,7 +23,7 @@ import {
 } from "../../services/canvas"
 import { formatBytes, listUploads, USER_QUOTA_BYTES } from "../../services/uploads"
 import { formatInstant } from "../../utils/dateTime"
-import type { AcademicDetailsInput, ProfileMetadata } from "../../services/profiles"
+import type { AcademicDetailsInput, ProfileMetadata, StudyPreferencesInput } from "../../services/profiles"
 import { formatCatalogYear } from "../../utils/catalogYear"
 
 const emptyDetails: AcademicDetailsInput = {
@@ -33,6 +34,27 @@ const emptyDetails: AcademicDetailsInput = {
   graduation_year: null,
 }
 
+const emptyPreferences: StudyPreferencesInput = {
+  preferred_study_time: null,
+  focus_session_minutes: null,
+  prefers_breaks: null,
+  break_duration_minutes: null,
+  non_academic_constraints: null,
+  planning_style: null,
+  primary_support_goal: null,
+}
+
+const studyTimeLabels: Record<string, string> = { morning: "Morning", afternoon: "Afternoon", evening: "Evening", late_night: "Late night", no_preference: "Varies" }
+const planningStyleLabels: Record<string, string> = { structured: "Structured", flexible: "Flexible", balanced: "Balanced" }
+const supportGoalLabels: Record<string, string> = { deadlines: "Deadlines", study_planning: "Study planning", degree_progress: "Degree progress", balance: "Balance" }
+const constraintLabels: Record<string, string> = { work: "Work", commute: "Commute", family: "Family", extracurriculars: "Extracurriculars", varies: "Varies" }
+
+function formatBreakPreference(profile: ProfileMetadata | null) {
+  if (!profile || profile.prefers_breaks === null) return "Not set"
+  if (!profile.prefers_breaks) return "Studies straight through"
+  return profile.break_duration_minutes ? `Short breaks (~${profile.break_duration_minutes} min)` : "Prefers breaks"
+}
+
 export function SettingsPage() {
   const { profile, loading, error: profileError, updateProfile } = useProfile()
   const { refreshAcademicData } = useAcademicData()
@@ -40,6 +62,9 @@ export function SettingsPage() {
   const [details, setDetails] = useState<AcademicDetailsInput>(emptyDetails)
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [preferences, setPreferences] = useState<StudyPreferencesInput>(emptyPreferences)
+  const [editingPreferences, setEditingPreferences] = useState(false)
+  const [preferencesSaving, setPreferencesSaving] = useState(false)
   const [nameSaving, setNameSaving] = useState(false)
   const [message, setMessage] = useState("")
   const [error, setError] = useState("")
@@ -50,6 +75,7 @@ export function SettingsPage() {
     if (profile) {
       setDisplayName(profile.display_name)
       setDetails(profile)
+      setPreferences(profile)
     }
   }, [profile])
 
@@ -66,6 +92,16 @@ export function SettingsPage() {
         profile.graduation_year ||
         profile.expected_graduation_term ||
         profile.catalog_year),
+  )
+
+  const hasPreferences = Boolean(
+    profile &&
+      (profile.preferred_study_time ||
+        profile.focus_session_minutes ||
+        profile.prefers_breaks !== null ||
+        profile.non_academic_constraints?.length ||
+        profile.planning_style ||
+        profile.primary_support_goal),
   )
 
   async function saveName(event: FormEvent) {
@@ -97,6 +133,23 @@ export function SettingsPage() {
       setError(reason instanceof Error ? reason.message : "Unable to save academic details")
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function savePreferences(event: FormEvent) {
+    event.preventDefault()
+    setPreferencesSaving(true)
+    setError("")
+    setMessage("")
+    try {
+      const saved = await updateProfile(preferences)
+      setPreferences(saved)
+      setEditingPreferences(false)
+      setMessage("Study preferences saved.")
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to save study preferences")
+    } finally {
+      setPreferencesSaving(false)
     }
   }
 
@@ -181,6 +234,51 @@ export function SettingsPage() {
               )}
               <Button onClick={() => { setEditing(true); setMessage("") }}>
                 {hasDetails ? "Edit academic details" : "Add academic details"}
+              </Button>
+            </>
+          )}
+        </Card>
+
+        <Card>
+          <p className="eyebrow">Study preferences</p>
+          <h3>{editingPreferences ? "Update your study preferences" : "How you like to study"}</h3>
+          {loading ? (
+            <p>Loading your preferences…</p>
+          ) : editingPreferences ? (
+            <form className="academic-details-form" onSubmit={savePreferences}>
+              <StudyPreferencesFields value={preferences} onChange={setPreferences} />
+              <div className="form-actions">
+                <Button type="submit" disabled={preferencesSaving}>
+                  {preferencesSaving ? "Saving…" : "Save study preferences"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="quiet"
+                  onClick={() => {
+                    setPreferences(profile ?? emptyPreferences)
+                    setEditingPreferences(false)
+                    setError("")
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </form>
+          ) : (
+            <>
+              <div className="facts-list">
+                <Fact label="Preferred study time" value={profile?.preferred_study_time ? studyTimeLabels[profile.preferred_study_time] : "Not set"} />
+                <Fact label="Typical focus session" value={profile?.focus_session_minutes ? `${profile.focus_session_minutes} minutes` : "Not set"} />
+                <Fact label="Break preference" value={formatBreakPreference(profile)} />
+                <Fact label="Non-academic constraints" value={profile?.non_academic_constraints?.length ? profile.non_academic_constraints.map((value) => constraintLabels[value]).join(", ") : "Not set"} />
+                <Fact label="Planning style" value={profile?.planning_style ? planningStyleLabels[profile.planning_style] : "Not set"} />
+                <Fact label="What would help most" value={profile?.primary_support_goal ? supportGoalLabels[profile.primary_support_goal] : "Not set"} />
+              </div>
+              {!hasPreferences && (
+                <p>These are optional. Sharing them helps Pathly's Companion tailor its advice.</p>
+              )}
+              <Button onClick={() => { setEditingPreferences(true); setMessage("") }}>
+                {hasPreferences ? "Edit study preferences" : "Add study preferences"}
               </Button>
             </>
           )}

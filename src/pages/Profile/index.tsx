@@ -24,6 +24,9 @@ const emptyProfile: ProfileMetadata = {
   focus_session_minutes: null,
   prefers_breaks: null,
   break_duration_minutes: null,
+  non_academic_constraints: null,
+  planning_style: null,
+  primary_support_goal: null,
 }
 
 export function ProfilePage() {

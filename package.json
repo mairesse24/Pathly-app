@@ -16,6 +16,7 @@
     "test:syllabus-classification": "node scripts/validate-syllabus-classification.mjs",
     "test:week-only-syllabus": "node scripts/validate-week-only-syllabus.mjs",
     "test:course-roadmap-migration": "node scripts/validate-course-roadmap-migration.mjs",
+    "test:study-preferences-migration": "node scripts/validate-study-preferences-migration.mjs",
     "test:degree-audit-isolation": "node scripts/validate-degree-audit-isolation.mjs",
     "test:course-removal": "node scripts/validate-course-removal.mjs",
     "test:organize-notes": "node scripts/validate-organize-notes.mjs",

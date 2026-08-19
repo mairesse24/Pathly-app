@@ -28,7 +28,7 @@ function isRateLimited(error: { status?: number; code?: string; message?: string
 }
 
 export function AuthPage() {
-  const { user } = useAuth();
+  const { user, recovery, clearRecovery } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [mode, setMode] = useState<"signin" | "signup" | "confirmation" | "forgot">("signin");
@@ -40,6 +40,9 @@ export function AuthPage() {
   const [busy, setBusy] = useState(false);
   const [confirmationEmail, setConfirmationEmail] = useState("");
   const [cooldown, setCooldown] = useState(0);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [recoveryDone, setRecoveryDone] = useState(false);
 
   const signup = mode === "signup";
 
@@ -48,6 +51,35 @@ export function AuthPage() {
     const timer = window.setInterval(() => setCooldown((seconds) => Math.max(0, seconds - 1)), 1000);
     return () => window.clearInterval(timer);
   }, [cooldown > 0]);
+
+  async function submitNewPassword(event: FormEvent) {
+    event.preventDefault();
+    setMessage("");
+    if (newPassword.length < PASSWORD_MIN_LENGTH) {
+      setMessage(`Your password must be at least ${PASSWORD_MIN_LENGTH} characters.`);
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setMessage("Passwords do not match.");
+      return;
+    }
+    setBusy(true);
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    setBusy(false);
+    if (error) {
+      setMessage(isRateLimited(error) ? RATE_LIMIT_MESSAGE : error.message);
+      return;
+    }
+    setRecoveryDone(true);
+  }
+
+  // A session that originated from a password-recovery link must never fall through to the
+  // normal "already signed in" redirect below -- that would drop the user straight into the
+  // dashboard without ever letting them set a new password.
+  if (user && recovery) {
+    if (recoveryDone) return <main className="auth-page"><div className="auth-card"><Brand/><p className="eyebrow">Password updated</p><h1>You're all set.</h1><p>Your password has been changed. You can continue into Pathly now.</p><Button type="button" onClick={() => { clearRecovery(); navigate("/dashboard", { replace: true }); }}>Continue to Pathly</Button></div></main>;
+    return <main className="auth-page"><div className="auth-card"><Brand/><p className="eyebrow">Account recovery</p><h1>Choose a new password.</h1><p>Enter a new password for your Pathly account to finish resetting it.</p><form onSubmit={submitNewPassword}><label>New password<div className="password-field"><input type={showPassword ? "text" : "password"} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} autoComplete="new-password" autoCapitalize="none" spellCheck={false} aria-describedby="recovery-password-guidance" required /><button type="button" className="password-toggle" onClick={() => setShowPassword((visible) => !visible)} aria-label={`${showPassword ? "Hide" : "Show"} password`} aria-pressed={showPassword}>{showPassword ? "Hide" : "Show"}</button></div><small id="recovery-password-guidance" className={newPassword.length >= PASSWORD_RECOMMENDED_LENGTH ? "password-guidance is-strong" : "password-guidance"}>{newPassword ? getPasswordLengthMessage(newPassword) : `${PASSWORD_MIN_LENGTH} characters minimum; ${PASSWORD_RECOMMENDED_LENGTH}+ recommended.`}</small></label><label>Confirm new password<input type={showPassword ? "text" : "password"} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} autoComplete="new-password" required /></label>{message && <p className="form-message" role="alert">{message}</p>}<Button type="submit" disabled={busy}>{busy ? "Updating…" : "Update password"}</Button></form></div></main>;
+  }
 
   if (user) return <Navigate to={(location.state as { from?: string })?.from ?? "/dashboard"} replace />;
 

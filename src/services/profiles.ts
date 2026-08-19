@@ -17,14 +17,21 @@ export type ProfileMetadata = {
   focus_session_minutes: number | null
   prefers_breaks: boolean | null
   break_duration_minutes: number | null
+  non_academic_constraints: NonAcademicConstraint[] | null
+  planning_style: "structured" | "flexible" | "balanced" | null
+  primary_support_goal: "deadlines" | "study_planning" | "degree_progress" | "balance" | null
 }
+
+export type NonAcademicConstraint = "work" | "commute" | "family" | "extracurriculars" | "varies"
 
 export type GraduationTerm = "Spring" | "Summer" | "Fall" | "Winter"
 
 export type AcademicDetailsInput = Pick<ProfileMetadata, "university" | "major" | "graduation_year" | "catalog_year" | "expected_graduation_term">
 
+export type StudyPreferencesInput = Pick<ProfileMetadata, "preferred_study_time" | "focus_session_minutes" | "prefers_breaks" | "break_duration_minutes" | "non_academic_constraints" | "planning_style" | "primary_support_goal">
+
 const profileColumns =
-  "display_name,university,major,graduation_year,catalog_year,expected_graduation_term,timezone,preferred_study_time,focus_session_minutes,prefers_breaks,break_duration_minutes"
+  "display_name,university,major,graduation_year,catalog_year,expected_graduation_term,timezone,preferred_study_time,focus_session_minutes,prefers_breaks,break_duration_minutes,non_academic_constraints,planning_style,primary_support_goal"
 
 export async function getProfileMetadata(userId: string) {
   const { data, error } = await supabase

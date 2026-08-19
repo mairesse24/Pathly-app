@@ -184,7 +184,7 @@ Deno.serve(async (req: Request) => {
     const courseById = new Map(
       (courses || []).map((course: any) => [course.id, course]),
     )
-    const { data: profile } = await admin.from("profiles").select("timezone,preferred_study_time,focus_session_minutes,prefers_breaks,break_duration_minutes,university,major,catalog_year,expected_graduation_term,graduation_year").eq("id", user.id).maybeSingle()
+    const { data: profile } = await admin.from("profiles").select("timezone,preferred_study_time,focus_session_minutes,prefers_breaks,break_duration_minutes,non_academic_constraints,planning_style,primary_support_goal,university,major,catalog_year,expected_graduation_term,graduation_year").eq("id", user.id).maybeSingle()
     const timeZone = validTimeZone(profile?.timezone || requestedTimeZone)
     const localToday = localDateKey(new Date(), timeZone)
 
