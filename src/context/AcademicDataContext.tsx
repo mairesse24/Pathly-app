@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react"
@@ -85,8 +86,25 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
     [loading, setLoading] = useState(true),
     [error, setError] = useState("")
 
+  // load() can be re-triggered before a previous call finishes -- user/today
+  // both change during normal startup (auth resolving, then profile/timezone
+  // resolving), and refreshAcademicData() can also be called manually (e.g.
+  // right after a syllabus approval) while that effect-driven call is still
+  // in flight. Without a sequence guard, whichever call's Promise.all merely
+  // *settles* last wins, including a stale call's `if (!user)` clear -- a
+  // late-resolving stale success is harmless (it carries the same live data),
+  // but a stale call landing after a fresher one has already set correct
+  // state is not, and reliably nukes whichever table happens to be slowest
+  // to resolve (assignments, being the largest of these queries here, was
+  // the one that lost this race in practice). Only the most recently
+  // *started* call is ever allowed to write state.
+  const loadSeq = useRef(0)
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current
+    const stale = () => loadSeq.current !== seq
+    if (import.meta.env.DEV) console.debug(`[AcademicData] load#${seq} start`, { userId: user?.id ?? null, today })
     if (!user) {
+      if (stale()) return
       setSemesters([])
 
       setCourses([])
@@ -135,22 +153,39 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
         reflectionService.getReflection(today),
       ])
 
+      if (stale()) {
+        if (import.meta.env.DEV) console.debug(`[AcademicData] load#${seq} discarded -- superseded by load#${loadSeq.current}`)
+        return
+      }
+
+      if (import.meta.env.DEV) console.debug(`[AcademicData] load#${seq} raw`, { courses: c.length, assignments: a.length, exams: e.length })
+
       setSemesters(s)
 
       setCourses(c)
 
       const currentCourseIds = activeCourseIds(c)
-      setAssignments(filterActiveCourseItems(a, currentCourseIds))
+      const activeAssignments = filterActiveCourseItems(a, currentCourseIds)
+      const activeExams = filterActiveCourseItems(e, currentCourseIds)
 
-      setExams(filterActiveCourseItems(e, currentCourseIds))
+      if (import.meta.env.DEV) console.debug(`[AcademicData] load#${seq} filtered`, {
+        activeCourseIds: Array.from(currentCourseIds),
+        assignments: { before: a.length, after: activeAssignments.length, ids: activeAssignments.map((item) => item.id) },
+        exams: { before: e.length, after: activeExams.length, ids: activeExams.map((item) => item.id) },
+      })
+
+      setAssignments(activeAssignments)
+
+      setExams(activeExams)
 
       setStudySessions(filterActiveCourseItems(ss, currentCourseIds, true))
 
       setReflection(r)
     } catch (e) {
+      if (stale()) return
       setError(e instanceof Error ? e.message : "Unable to load academic data")
     } finally {
-      setLoading(false)
+      if (!stale()) setLoading(false)
     }
   }, [user, today])
   useEffect(() => {
