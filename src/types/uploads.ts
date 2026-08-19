@@ -37,6 +37,11 @@ export type SyllabusResult = {
   meeting_end: string | null
   location: string | null
   course_summary: string
+  topics?: string[] | null
+  grading_breakdown?: Array<{
+    label: string
+    value: string
+  }> | null
   milestones: SyllabusMilestone[]
   assignments: Array<{ title: string; description: string | null; due_at: string | null; estimated_minutes: number | null }>
   exams: Array<{ title: string; exam_at: string | null; location: string | null; topics_summary: string | null }>
