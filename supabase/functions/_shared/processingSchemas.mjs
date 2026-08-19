@@ -1,21 +1,33 @@
+// A holiday or no-class notice is never a deliverable or exam no matter
+// what the model did with it or whether it carries a date -- this is a
+// narrow, high-precision safety net (not a general topic-vs-deliverable
+// classifier, which needs the model's judgment plus human review in
+// ProcessingReview) that only fires on unambiguous "there is no class"
+// language, so it can't false-positive on a real assignment title.
+const NON_DELIVERABLE_PATTERN = /\b(holiday|no class(es)?|classes? (cancell?ed|suspended)|campus closed|university closed|spring break|winter break|fall break|reading day|reading period)\b/i
+function isNonDeliverable(title) {
+  return NON_DELIVERABLE_PATTERN.test(title)
+}
+
 // Safety net independent of how well the model followed instructions: a
 // syllabus schedule item is only ever "calendar-ready" (an assignment or
-// exam) when it carries a concrete date. Anything still placed in
-// assignments/exams without a date -- or an "exam" that isn't actually
-// dated -- is demoted to a milestone instead of silently becoming an
-// undated calendar item.
+// exam) when it (a) carries a concrete date and (b) isn't an obvious
+// holiday/no-class notice. Anything still placed in assignments/exams
+// without a date, an "exam" that isn't actually dated, or a holiday-shaped
+// title, is demoted to a milestone instead of silently becoming a calendar
+// item that isn't really a student deliverable.
 export function normalizeSyllabusResult(value) {
   const milestones = Array.isArray(value.milestones) ? [...value.milestones] : []
   const assignments = []
   for (const item of Array.isArray(value.assignments) ? value.assignments : []) {
     if (!item || typeof item.title !== "string" || !item.title.trim()) continue
-    if (typeof item.due_at === "string" && item.due_at) assignments.push(item)
+    if (typeof item.due_at === "string" && item.due_at && !isNonDeliverable(item.title)) assignments.push(item)
     else milestones.push({ title: item.title, context: null, description: typeof item.description === "string" ? item.description : null })
   }
   const exams = []
   for (const item of Array.isArray(value.exams) ? value.exams : []) {
     if (!item || typeof item.title !== "string" || !item.title.trim()) continue
-    if (typeof item.exam_at === "string" && item.exam_at) exams.push(item)
+    if (typeof item.exam_at === "string" && item.exam_at && !isNonDeliverable(item.title)) exams.push(item)
     else milestones.push({ title: item.title, context: null, description: typeof item.topics_summary === "string" ? item.topics_summary : null })
   }
   return { ...value, milestones, assignments, exams }

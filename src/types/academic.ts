@@ -49,6 +49,7 @@ export type ExamRecord = {
   exam_at: string | null
   location: string | null
   topics_summary: string | null
+  source: string
 }
 export type StudySessionRecord = {
   id: string
