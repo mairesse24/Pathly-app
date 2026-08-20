@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { Brand } from "../../components/layout/Brand";
 import { Button } from "../../components/ui/Button";
@@ -44,6 +44,11 @@ export function AuthPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [recoveryDone, setRecoveryDone] = useState(false);
   const [resetSent, setResetSent] = useState(false);
+  // `busy` (React state) gates the disabled button in render, but a second submit event
+  // dispatched in the same task -- e.g. a fast double-click or Enter-mash -- can still read a
+  // stale pre-commit closure of `busy`. This ref is mutated synchronously so every handler can
+  // reject a re-entrant call before it sends a second signUp/resend/resetPasswordForEmail request.
+  const busyRef = useRef(false);
 
   const signup = mode === "signup";
 
@@ -55,6 +60,7 @@ export function AuthPage() {
 
   async function submitNewPassword(event: FormEvent) {
     event.preventDefault();
+    if (busyRef.current) return;
     setMessage("");
     if (newPassword.length < PASSWORD_MIN_LENGTH) {
       setMessage(`Your password must be at least ${PASSWORD_MIN_LENGTH} characters.`);
@@ -64,8 +70,10 @@ export function AuthPage() {
       setMessage("Passwords do not match.");
       return;
     }
+    busyRef.current = true;
     setBusy(true);
     const { error } = await supabase.auth.updateUser({ password: newPassword });
+    busyRef.current = false;
     setBusy(false);
     if (error) {
       setMessage(isRateLimited(error) ? RATE_LIMIT_MESSAGE : error.message);
@@ -93,17 +101,20 @@ export function AuthPage() {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (busyRef.current) return;
     setMessage("");
     if (signup && password.length < PASSWORD_MIN_LENGTH) {
       setMessage(`Your password must be at least ${PASSWORD_MIN_LENGTH} characters.`);
       return;
     }
 
+    busyRef.current = true;
     setBusy(true);
     const submittedEmail = email.trim();
     const result = signup
       ? await supabase.auth.signUp({ email: submittedEmail, password, options: { data: { display_name: name, full_name: name }, emailRedirectTo: authRedirectUrl() } })
       : await supabase.auth.signInWithPassword({ email: submittedEmail, password });
+    busyRef.current = false;
     setBusy(false);
 
     if (result.error) {
@@ -129,10 +140,12 @@ export function AuthPage() {
   }
 
   async function resendConfirmation() {
-    if (busy || cooldown > 0) return;
+    if (busyRef.current || cooldown > 0) return;
+    busyRef.current = true;
     setBusy(true);
     setMessage("");
     const { error } = await supabase.auth.resend({ type: "signup", email: confirmationEmail, options: { emailRedirectTo: authRedirectUrl() } });
+    busyRef.current = false;
     setBusy(false);
     setCooldown(60);
     setMessage(isRateLimited(error) ? RATE_LIMIT_MESSAGE : error ? "We couldn't send instructions right now. Please try again in a moment." : "If confirmation is still needed, we've sent new instructions.");
@@ -140,6 +153,8 @@ export function AuthPage() {
 
   async function requestPasswordReset(event: FormEvent) {
     event.preventDefault();
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     setMessage("");
     const submittedEmail = email.trim();
@@ -150,6 +165,7 @@ export function AuthPage() {
     // anything. Any other error (e.g. a transient send failure) gets a generic message and
     // stays on this form; only the no-error case is treated as "sent" and neutral either way.
     const { error } = await supabase.auth.resetPasswordForEmail(submittedEmail, { redirectTo: authRedirectUrl() });
+    busyRef.current = false;
     setBusy(false);
     setEmail(submittedEmail);
     if (error) {
