@@ -243,7 +243,7 @@ export function CourseDetailPage() {
               <p>No week-by-week roadmap yet. Review an uploaded syllabus to add one.</p>
             )}
           </Card>
-          <Card>
+          <Card className="course-files-card">
             <p className="eyebrow">Course files</p>
             {fileError ? (
               <p className="form-message">{fileError}</p>
