@@ -17,6 +17,7 @@ import { useAcademicData } from "../../context/AcademicDataContext"
 import { useAuth } from "../../context/AuthContext"
 import { useProfile } from "../../context/ProfileContext"
 import { listProcessingResults, processUpload } from "../../services/processing"
+import { listPendingSyllabusExamConflicts, resolveSyllabusExamConflict, type SyllabusExamConflict } from "../../services/syllabusExamConflicts"
 
 import {
   deleteUpload,
@@ -57,7 +58,7 @@ export function UploadCenterPage() {
   const { profile } = useProfile()
   const { user } = useAuth()
 
-  const { courses } = useAcademicData()
+  const { courses, exams, refreshAcademicData } = useAcademicData()
 
   const [params] = useSearchParams()
 
@@ -75,6 +76,10 @@ export function UploadCenterPage() {
   const [files, setFiles] = useState<UploadedFileRecord[]>([])
 
   const [results, setResults] = useState<ProcessingResultRecord[]>([])
+  const [examConflicts, setExamConflicts] = useState<SyllabusExamConflict[]>([])
+  const [resolvingConflict, setResolvingConflict] = useState<{ id: string; resolution: "keep_existing" | "replace" } | null>(null)
+  const [conflictMessage, setConflictMessage] = useState("")
+  const [conflictError, setConflictError] = useState("")
 
   const [processingId, setProcessingId] = useState("")
   const [latestUploadedId, setLatestUploadedId] = useState("")
@@ -87,10 +92,11 @@ export function UploadCenterPage() {
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    Promise.all([listUploads(), listProcessingResults()])
-      .then(([uploads, processing]) => {
+    Promise.all([listUploads(), listProcessingResults(), listPendingSyllabusExamConflicts()])
+      .then(([uploads, processing, conflicts]) => {
         setFiles(uploads)
         setResults(processing)
+        setExamConflicts(conflicts)
       })
       .catch((reason: unknown) => {
         setState("error")
@@ -117,6 +123,23 @@ export function UploadCenterPage() {
     category === "degree_audit" || category === "unofficial_transcript"
 
   const used = files.reduce((sum, item) => sum + item.size_bytes, 0)
+
+  async function resolveExamConflict(conflict: SyllabusExamConflict, resolution: "keep_existing" | "replace") {
+    if (resolvingConflict) return
+    setResolvingConflict({ id: conflict.id, resolution })
+    setConflictMessage("")
+    setConflictError("")
+    try {
+      await resolveSyllabusExamConflict(conflict.id, resolution)
+      setExamConflicts((current) => current.filter((item) => item.id !== conflict.id))
+      await refreshAcademicData()
+      setConflictMessage(resolution === "replace" ? "The proposed syllabus exam date replaced the prior syllabus date." : "The existing syllabus exam date was kept.")
+    } catch (reason) {
+      setConflictError(reason instanceof Error ? reason.message : "Unable to resolve the exam conflict.")
+    } finally {
+      setResolvingConflict(null)
+    }
+  }
 
   function openFilePicker() {
     inputRef.current?.click()
@@ -289,6 +312,7 @@ export function UploadCenterPage() {
           </div>
         </div>
         <p className="academic-disclaimer">AI-generated summaries and extracted dates can make mistakes. Review important information before relying on it.</p>
+        {examConflicts.length > 0 && <Card className="processing-review"><p className="eyebrow">Exam dates need review</p><h3>Two syllabi disagree</h3><p>Pathly kept the existing syllabus exam on Dashboard and Calendar. Choose whether to keep it or replace it with the proposed date.</p>{examConflicts.map((conflict) => { const existing=exams.find((exam)=>exam.id===conflict.existing_exam_id);const course=courses.find((item)=>item.id===conflict.course_id);const isResolving=resolvingConflict?.id===conflict.id;return <div className="review-row" key={conflict.id}><div><strong>{course?.course_code??"Course"} — {conflict.proposed_title}</strong><p>Existing: {existing?.exam_at?formatInstant(existing.exam_at,profile?.timezone,{dateStyle:"medium",timeStyle:"short"}):"No date"}<br/>Proposed: {conflict.proposed_exam_at?formatInstant(conflict.proposed_exam_at,profile?.timezone,{dateStyle:"medium",timeStyle:"short"}):"No date"}</p></div><div className="form-actions"><Button variant="secondary" onClick={()=>void resolveExamConflict(conflict,"keep_existing")} disabled={resolvingConflict!==null}>{isResolving&&resolvingConflict.resolution==="keep_existing"?"Keeping…":"Keep existing"}</Button><Button onClick={()=>void resolveExamConflict(conflict,"replace")} disabled={resolvingConflict!==null}>{isResolving&&resolvingConflict.resolution==="replace"?"Applying…":"Use proposed"}</Button></div></div>})}{conflictError&&<p className="form-message" role="alert">{conflictError}</p>}{conflictMessage&&<p className="save-success" role="status">{conflictMessage}</p>}</Card>}
         <Card
           className="upload-zone"
           onClick={(event) => {
