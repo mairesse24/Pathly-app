@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react"
 import { useNavigate } from "react-router-dom"
 import { PageHeader } from "../../components/layout/PageHeader"
+import { GoogleCalendarConnectionCard } from "../../components/settings/GoogleCalendarConnectionCard"
 import { AcademicDetailsFields } from "../../components/profile/AcademicDetailsFields"
 import { StudyPreferencesFields } from "../../components/profile/StudyPreferencesFields"
 import { Button } from "../../components/ui/Button"
@@ -313,6 +314,7 @@ export function SettingsPage() {
           timezone={profile?.timezone}
           onSynced={refreshAcademicData}
         />
+        <GoogleCalendarConnectionCard timezone={profile?.timezone} />
 
         {message && <p className="save-success" role="status">{message}</p>}
         {(error || profileError) && (

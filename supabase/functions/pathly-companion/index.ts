@@ -231,15 +231,25 @@ Deno.serve(async (req: Request) => {
           .lte("start_at", later.toISOString())
           .order("start_at")
           .limit(8)
+      const busyPeriodsRequest = admin
+        .from("calendar_busy_periods")
+        .select("starts_at,ends_at,source")
+        .eq("user_id", user.id)
+        .lt("starts_at", later.toISOString())
+        .gt("ends_at", now.toISOString())
+        .order("starts_at")
+        .limit(100)
       const [
         { data: assignments = [] },
         { data: exams = [] },
         { data: sessions = [] },
+        { data: busyPeriods = [] },
         { data: reflections = [] },
       ] = await Promise.all([
         assignmentsRequest,
         examsRequest,
         sessionsRequest,
+        busyPeriodsRequest,
         admin
           .from("daily_reflections")
           .select("reflection_date,mood,energy,notes")
@@ -258,6 +268,7 @@ Deno.serve(async (req: Request) => {
         now,
       })
       add("Today's focus", "assignment", plan)
+      if (busyPeriods?.length) add("Personal busy times", "calendar", busyPeriods)
     }
     if (wantsDegree) {
       const { data: completed = [] } = await admin.from("completed_courses")
