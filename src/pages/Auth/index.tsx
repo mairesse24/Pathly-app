@@ -43,6 +43,7 @@ export function AuthPage() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [recoveryDone, setRecoveryDone] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
 
   const signup = mode === "signup";
 
@@ -124,6 +125,7 @@ export function AuthPage() {
     setPassword("");
     setShowPassword(false);
     setMessage("");
+    setResetSent(false);
   }
 
   async function resendConfirmation() {
@@ -141,15 +143,27 @@ export function AuthPage() {
     setBusy(true);
     setMessage("");
     const submittedEmail = email.trim();
-    await supabase.auth.resetPasswordForEmail(submittedEmail, { redirectTo: authRedirectUrl() });
+    // Supabase itself never errors here for an email with no account -- it silently no-ops
+    // the send -- specifically so this response can't be used to enumerate registered
+    // addresses. The only error worth distinguishing is rate limiting, which is a
+    // request-volume signal, not an account-existence one, so surfacing it doesn't leak
+    // anything. Any other error (e.g. a transient send failure) gets a generic message and
+    // stays on this form; only the no-error case is treated as "sent" and neutral either way.
+    const { error } = await supabase.auth.resetPasswordForEmail(submittedEmail, { redirectTo: authRedirectUrl() });
     setBusy(false);
     setEmail(submittedEmail);
-    setMessage("If an account matches that address, we'll send password reset instructions.");
+    if (error) {
+      setMessage(isRateLimited(error) ? RATE_LIMIT_MESSAGE : "We couldn't send instructions right now. Please try again in a moment.");
+      return;
+    }
+    setResetSent(true);
   }
 
   if (mode === "confirmation") return <main className="auth-page"><div className="auth-card auth-confirmation"><Brand/><p className="eyebrow">Account confirmation</p><h1>Check your email</h1><p>If this email is new, we sent a confirmation link. If you already have a Pathly account, try signing in or use Forgot password.</p><p className="confirmation-email">{maskEmail(confirmationEmail)}</p>{message && <p className={message.startsWith("We couldn't") || message.startsWith("Too many") ? "form-message" : "auth-success"} role="status">{message}</p>}<div className="auth-actions"><Button type="button" onClick={() => void resendConfirmation()} disabled={busy || cooldown > 0}>{busy ? "Sending…" : cooldown > 0 ? `Resend confirmation (${cooldown}s)` : "Resend confirmation"}</Button><Button type="button" variant="secondary" onClick={() => showMode("signin")}>Sign in instead</Button><button type="button" className="text-button" onClick={() => showMode("forgot")}>Forgot password?</button><button type="button" className="text-button" onClick={() => { setEmail(""); showMode("signup"); }}>Use a different email</button></div></div></main>;
 
-  if (mode === "forgot") return <main className="auth-page"><div className="auth-card"><Brand/><p className="eyebrow">Account access</p><h1>Reset your password.</h1><p>Enter your email and we'll send instructions if an account matches that address.</p><form onSubmit={requestPasswordReset}><label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required /></label>{message && <p className="auth-success" role="status">{message}</p>}<Button type="submit" disabled={busy}>{busy ? "Sending…" : "Send reset instructions"}</Button></form><button type="button" className="text-button" onClick={() => showMode("signin")}>Back to sign in</button></div></main>;
+  if (mode === "forgot" && resetSent) return <main className="auth-page"><div className="auth-card auth-confirmation"><Brand/><p className="eyebrow">Account access</p><h1>Check your email</h1><p>If a Pathly account exists for this email, we sent password-reset instructions. If you don't receive anything, check the email address or create a new account.</p><p className="confirmation-email">{maskEmail(email)}</p><div className="auth-actions"><Button type="button" onClick={() => showMode("signin")}>Back to sign in</Button><Button type="button" variant="secondary" onClick={() => showMode("signup")}>Create an account</Button><button type="button" className="text-button" onClick={() => { setEmail(""); setResetSent(false); }}>Use a different email</button></div></div></main>;
+
+  if (mode === "forgot") return <main className="auth-page"><div className="auth-card"><Brand/><p className="eyebrow">Account access</p><h1>Reset your password.</h1><p>Enter your email and we'll send instructions if an account matches that address.</p><form onSubmit={requestPasswordReset}><label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required /></label>{message && <p className="form-message" role="alert">{message}</p>}<Button type="submit" disabled={busy}>{busy ? "Sending…" : "Send reset instructions"}</Button></form><button type="button" className="text-button" onClick={() => showMode("signin")}>Back to sign in</button></div></main>;
 
   return <main className="auth-page"><div className="auth-card"><Brand/><p className="eyebrow">Welcome to Pathly</p><h1>{signup ? "Create your calm space." : "Good to see you."}</h1><form onSubmit={submit}>{signup && <label>Display name<input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" required /></label>}<label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required /></label><label>Password<div className="password-field"><input type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} minLength={signup ? PASSWORD_MIN_LENGTH : undefined} maxLength={signup ? PASSWORD_MAX_LENGTH : undefined} autoComplete={signup ? "new-password" : "current-password"} autoCapitalize="none" spellCheck={false} aria-describedby={signup ? "password-guidance" : undefined} required /><button type="button" className="password-toggle" onClick={() => setShowPassword((visible) => !visible)} aria-label={`${showPassword ? "Hide" : "Show"} password`} aria-pressed={showPassword}>{showPassword ? "Hide" : "Show"}</button></div>{signup && <small id="password-guidance" className={password.length >= PASSWORD_RECOMMENDED_LENGTH ? "password-guidance is-strong" : "password-guidance"}>{password ? getPasswordLengthMessage(password) : `${PASSWORD_MIN_LENGTH} characters minimum; ${PASSWORD_RECOMMENDED_LENGTH}+ recommended. Spaces and passphrases are welcome.`}</small>}</label>{message && <p className="form-message" role="alert">{message}</p>}<Button type="submit" disabled={busy}>{busy ? "One moment…" : signup ? "Create account" : "Sign in"}</Button></form><button type="button" className="text-button" onClick={() => showMode(signup ? "signin" : "signup")}>{signup ? "Already have an account? Sign in" : "New here? Create an account"}</button>{!signup && <button type="button" className="text-button auth-forgot" onClick={() => showMode("forgot")}>Forgot password?</button>}</div></main>;
 }
