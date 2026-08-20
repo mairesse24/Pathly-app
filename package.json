@@ -14,6 +14,7 @@
     "test:processing-schemas": "node scripts/validate-processing-schemas.mjs",
     "test:degree-guide-classification": "node scripts/validate-degree-guide-classification.mjs",
     "test:profile-load-resilience": "node scripts/validate-profile-load-resilience.mjs",
+    "test:onboarding": "node --experimental-strip-types --test src/utils/onboarding.test.ts",
     "test:syllabus-classification": "node scripts/validate-syllabus-classification.mjs",
     "test:week-only-syllabus": "node scripts/validate-week-only-syllabus.mjs",
     "test:course-roadmap-migration": "node scripts/validate-course-roadmap-migration.mjs",

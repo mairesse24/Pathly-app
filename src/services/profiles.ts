@@ -1,6 +1,8 @@
 import { supabase } from "../lib/supabase"
 
 export type ProfileMetadata = {
+  onboarding_completed: boolean
+
   display_name: string
 
   university: string
@@ -31,7 +33,7 @@ export type AcademicDetailsInput = Pick<ProfileMetadata, "university" | "major" 
 export type StudyPreferencesInput = Pick<ProfileMetadata, "preferred_study_time" | "focus_session_minutes" | "prefers_breaks" | "break_duration_minutes" | "non_academic_constraints" | "planning_style" | "primary_support_goal">
 
 const profileColumns =
-  "display_name,university,major,graduation_year,catalog_year,expected_graduation_term,timezone,preferred_study_time,focus_session_minutes,prefers_breaks,break_duration_minutes,non_academic_constraints,planning_style,primary_support_goal"
+  "onboarding_completed,display_name,university,major,graduation_year,catalog_year,expected_graduation_term,timezone,preferred_study_time,focus_session_minutes,prefers_breaks,break_duration_minutes,non_academic_constraints,planning_style,primary_support_goal"
 
 export async function getProfileMetadata(userId: string) {
   const { data, error } = await supabase

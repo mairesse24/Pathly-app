@@ -48,7 +48,7 @@ assert.equal((tryBlock.match(/persistProfile\(/g) || []).length, 1, "persistProf
 // services/profiles.ts is a deliberate, visible change.
 const profilesSource = readFileSync(new URL("../src/services/profiles.ts", import.meta.url), "utf8")
 const verifiedLiveColumns = [
-  "display_name", "university", "major", "graduation_year", "catalog_year",
+  "onboarding_completed", "display_name", "university", "major", "graduation_year", "catalog_year",
   "expected_graduation_term", "timezone", "preferred_study_time",
   "focus_session_minutes", "prefers_breaks", "break_duration_minutes",
   "non_academic_constraints", "planning_style", "primary_support_goal",

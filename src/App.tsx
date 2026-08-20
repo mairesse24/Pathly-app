@@ -29,6 +29,7 @@ import { ProtectedRoute } from "./components/auth/ProtectedRoute"
 import { AuthPage } from "./pages/Auth"
 
 import { OnboardingPage } from "./pages/Onboarding"
+import { OnboardingRoute } from "./components/auth/OnboardingRoute"
 import { CourseDetailPage } from "./pages/CourseDetail"
 import { AcademicDataProvider } from "./context/AcademicDataContext"
 import { ProfileProvider } from "./context/ProfileContext"
@@ -47,19 +48,21 @@ export default function App() {
               <Route path="/auth" element={<AuthPage />} />
               <Route element={<ProtectedRoute />}>
                 <Route path="/onboarding" element={<OnboardingPage />} />
-                <Route element={<AppShell />}>
-                  <Route path="/dashboard" element={<DashboardPage />} />
-                  <Route path="/study" element={<StudyHubPage />} />
-                  <Route
-                    path="/study/:courseId"
-                    element={<CourseDetailPage />}
-                  />
-                  <Route path="/calendar" element={<CalendarPage />} />
-                  <Route path="/degree" element={<DegreePlannerPage />} />
-                  <Route path="/companion" element={<CompanionPage />} />
-                  <Route path="/uploads" element={<UploadCenterPage />} />
-                  <Route path="/profile" element={<ProfilePage />} />
-                  <Route path="/settings" element={<SettingsPage />} />
+                <Route element={<OnboardingRoute />}>
+                  <Route element={<AppShell />}>
+                    <Route path="/dashboard" element={<DashboardPage />} />
+                    <Route path="/study" element={<StudyHubPage />} />
+                    <Route
+                      path="/study/:courseId"
+                      element={<CourseDetailPage />}
+                    />
+                    <Route path="/calendar" element={<CalendarPage />} />
+                    <Route path="/degree" element={<DegreePlannerPage />} />
+                    <Route path="/companion" element={<CompanionPage />} />
+                    <Route path="/uploads" element={<UploadCenterPage />} />
+                    <Route path="/profile" element={<ProfilePage />} />
+                    <Route path="/settings" element={<SettingsPage />} />
+                  </Route>
                 </Route>
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />

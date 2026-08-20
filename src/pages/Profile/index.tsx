@@ -13,6 +13,7 @@ import { useProfile } from "../../context/ProfileContext"
 import type { ProfileMetadata } from "../../services/profiles"
 
 const emptyProfile: ProfileMetadata = {
+  onboarding_completed: false,
   display_name: "",
   university: "",
   major: "",
