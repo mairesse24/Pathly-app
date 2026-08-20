@@ -11,14 +11,8 @@ export async function listCourseRoadmap(courseId: string) {
   return data as CourseRoadmapEntryRecord[]
 }
 
-// Synthesizes free text for the existing organize-course-notes pipeline
-// (title + pasted text) from a roadmap entry, so "Study this topic" can
-// reuse it as-is instead of the edge function needing a separate
-// topic-only input mode.
-export function buildRoadmapStudyText(entry: Pick<CourseRoadmapEntryRecord, "period_label" | "topic" | "description" | "deliverable">) {
-  const lines = [`Course roadmap topic: ${entry.topic}`]
-  if (entry.period_label) lines.push(`Period: ${entry.period_label}`)
-  if (entry.description) lines.push(entry.description)
-  if (entry.deliverable) lines.push(`Related deliverable: ${entry.deliverable}`)
-  return lines.join("\n")
-}
+// Pure presentation helpers live in utils/roadmapPresentation.ts (no
+// Supabase import) so they can run under plain `node --test`; re-exported
+// here so existing callers keep importing everything roadmap-related from
+// this one service module.
+export { buildRoadmapStudyText, roadmapSessionTitle } from "../utils/roadmapPresentation"

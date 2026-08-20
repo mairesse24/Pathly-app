@@ -20,3 +20,20 @@ export function assignmentEventStatus(status: string, dueDateKey: string | null,
   if (dueDateKey && dueDateKey < todayKey) return "overdue"
   return "upcoming"
 }
+
+// A recurring class meeting is neither overdue nor completed -- those are
+// assignment states. Once its date has passed it becomes history: still
+// visible for context, just visually muted, distinct from "upcoming".
+export type ClassMeetingStatus = "past" | "upcoming"
+export function classMeetingStatus(meetingDateKey: string, todayKey: string): ClassMeetingStatus {
+  return meetingDateKey < todayKey ? "past" : "upcoming"
+}
+
+// Exams have no completion state in this product (there's nothing to mark
+// "done" the way an assignment can be submitted) -- a past exam is only
+// ever "past" history, muted the same way a past class meeting is, never
+// "completed".
+export type ExamEventStatus = "past" | "upcoming"
+export function examEventStatus(examDateKey: string, todayKey: string): ExamEventStatus {
+  return examDateKey < todayKey ? "past" : "upcoming"
+}

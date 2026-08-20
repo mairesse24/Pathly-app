@@ -25,6 +25,8 @@
     "test:upload-isolation": "node scripts/validate-upload-isolation.mjs",
     "test:delete-account": "node scripts/validate-delete-account.mjs",
     "test:account-deletion-cascade": "node scripts/validate-account-deletion-cascade.mjs",
+    "test:course-roadmap-session-prefill": "node --experimental-strip-types --test src/utils/roadmapPresentation.test.ts",
+    "test:calendar-roadmap-study-integration": "node scripts/validate-calendar-roadmap-study-integration.mjs",
     "preview": "vite preview",
     "format": "oxfmt"
   },

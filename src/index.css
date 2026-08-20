@@ -86,3 +86,8 @@ button.calendar-event { display:block; width:100%; border:0; text-align:left; cu
 .btn.btn-danger:hover { filter:brightness(0.95); }
 .btn.btn-danger:disabled { opacity:.5; cursor:not-allowed; filter:none; }
 :root[data-theme="dark"] .btn-danger { background:var(--rose); border-color:var(--rose); color:var(--ink); }
+
+.calendar-event.history { opacity:.6; }
+.calendar-event.study-session-event { border-left:3px solid var(--green); padding-left:9px; }
+.event-kind-label { display:block; font-weight:700; text-transform:uppercase; letter-spacing:.04em; font-size:9px; opacity:.75; margin-bottom:2px; }
+.roadmap-entry-actions { display:flex; flex-direction:column; gap:2px; flex-shrink:0; }

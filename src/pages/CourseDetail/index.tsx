@@ -18,7 +18,7 @@ import {
   listUploads,
 } from "../../services/uploads"
 import { processUpload } from "../../services/processing"
-import { buildRoadmapStudyText, listCourseRoadmap } from "../../services/courseRoadmap"
+import { buildRoadmapStudyText, listCourseRoadmap, roadmapSessionTitle } from "../../services/courseRoadmap"
 
 import type { ProcessingResultRecord, ProcessingStage, UploadedFileRecord } from "../../types/uploads"
 import type { CourseRoadmapEntryRecord } from "../../types/academic"
@@ -84,9 +84,17 @@ export function CourseDetailPage() {
       )
   }, [courseId])
 
-  function studyThisTopic(entry: CourseRoadmapEntryRecord) {
+  function generateStudyMaterials(entry: CourseRoadmapEntryRecord) {
     setNotesPrefill({ title: entry.topic, text: buildRoadmapStudyText(entry), requestedAt: Date.now() })
     document.getElementById("organize-notes-section")?.scrollIntoView({ behavior: "smooth", block: "start" })
+  }
+
+  // Hands the course + a prefilled title to Calendar's own "Add" dialog via
+  // navigation state -- the student still picks and confirms the actual
+  // date/time there. Nothing is scheduled from here.
+  function planStudySession(entry: CourseRoadmapEntryRecord) {
+    if (!courseId) return
+    navigate("/calendar", { state: { planSession: { courseId, title: roadmapSessionTitle(entry) } } })
   }
 
   async function startReview(row: UploadedFileRecord) {
@@ -224,7 +232,10 @@ export function CourseDetailPage() {
                       {entry.entry_date && <small>{formatDateKey(entry.entry_date, { month: "short", day: "numeric", year: "numeric" })}</small>}
                       {entry.description && <small>{entry.description}</small>}
                     </div>
-                    <Button variant="quiet" onClick={() => studyThisTopic(entry)}>Study this topic</Button>
+                    <div className="roadmap-entry-actions">
+                      <Button variant="quiet" onClick={() => planStudySession(entry)}>Plan study session</Button>
+                      <Button variant="quiet" onClick={() => generateStudyMaterials(entry)}>Generate study materials</Button>
+                    </div>
                   </li>
                 ))}
               </ul>
