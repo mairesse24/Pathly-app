@@ -50,9 +50,16 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     setError("")
 
     try {
-      let next = await getProfileMetadata(user.id)
-      if (!next.timezone)
-        next = await persistProfile(user.id, { timezone: browserTimeZone() })
+      const loaded = await getProfileMetadata(user.id)
+      // Backfilling a missing timezone is a best-effort side effect of loading
+      // the profile, not the load itself -- a transient failure here (a
+      // network blip, a momentary RLS/schema hiccup) must never hide profile
+      // data that was already successfully read above. Blank optional fields
+      // (academic details, study preferences) are valid profile states, not
+      // failures, and must never prevent `next` from being set.
+      const next = loaded.timezone
+        ? loaded
+        : await persistProfile(user.id, { timezone: browserTimeZone() }).catch(() => loaded)
       setProfile(next)
       return next
     } catch (reason) {
