@@ -82,6 +82,8 @@ export function UploadCenterPage() {
   const [resolvingConflict, setResolvingConflict] = useState<{ id: string; resolution: "keep_existing" | "replace" } | null>(null)
   const [conflictMessage, setConflictMessage] = useState("")
   const [conflictError, setConflictError] = useState("")
+  const [uploadLoadError, setUploadLoadError] = useState("")
+  const [supportingLoadError, setSupportingLoadError] = useState("")
 
   const [processingId, setProcessingId] = useState("")
   const [latestUploadedId, setLatestUploadedId] = useState("")
@@ -94,20 +96,34 @@ export function UploadCenterPage() {
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    Promise.all([listUploads(), listProcessingResults(), listPendingSyllabusExamConflicts(), listTranscriptImports()])
-      .then(([uploads, processing, conflicts, imports]) => {
-        setFiles(uploads)
-        setResults(processing)
-        setExamConflicts(conflicts)
-        setTranscriptImports(imports)
-      })
-      .catch((reason: unknown) => {
-        setState("error")
-        setMessage(
-          reason instanceof Error ? reason.message : "Unable to load uploads.",
-        )
-      })
+    void loadUploadCenter()
   }, [])
+
+  async function loadUploadCenter() {
+    setUploadLoadError("")
+    setSupportingLoadError("")
+    const [uploads, processing, conflicts, imports] = await Promise.allSettled([
+      listUploads(),
+      listProcessingResults(),
+      listPendingSyllabusExamConflicts(),
+      listTranscriptImports(),
+    ])
+    if (uploads.status === "fulfilled") {
+      setFiles(uploads.value)
+    } else {
+      setUploadLoadError(
+        "Your uploaded files could not be loaded. Check your connection and try again.",
+      )
+    }
+    if (processing.status === "fulfilled") setResults(processing.value)
+    if (conflicts.status === "fulfilled") setExamConflicts(conflicts.value)
+    if (imports.status === "fulfilled") setTranscriptImports(imports.value)
+    if ([processing, conflicts, imports].some((result) => result.status === "rejected")) {
+      setSupportingLoadError(
+        "Some upload review tools are temporarily unavailable. Your files are still shown below.",
+      )
+    }
+  }
 
   useEffect(() => {
     if (!latestUploadedId) return
@@ -340,6 +356,8 @@ export function UploadCenterPage() {
           </div>
         </div>
         <p className="academic-disclaimer">AI-generated summaries and extracted dates can make mistakes. Review important information before relying on it.</p>
+        {uploadLoadError && <Card className="section-error"><p role="alert">{uploadLoadError}</p><Button variant="secondary" onClick={() => void loadUploadCenter()}>Retry loading uploads</Button></Card>}
+        {supportingLoadError && <p className="form-message section-error" role="status">{supportingLoadError}</p>}
         {examConflicts.length > 0 && <Card className="processing-review"><p className="eyebrow">Exam dates need review</p><h3>Two syllabi disagree</h3><p>Pathly kept the existing syllabus exam on Dashboard and Calendar. Choose whether to keep it or replace it with the proposed date.</p>{examConflicts.map((conflict) => { const existing=exams.find((exam)=>exam.id===conflict.existing_exam_id);const course=courses.find((item)=>item.id===conflict.course_id);const isResolving=resolvingConflict?.id===conflict.id;return <div className="review-row" key={conflict.id}><div><strong>{course?.course_code??"Course"} — {conflict.proposed_title}</strong><p>Existing: {existing?.exam_at?formatInstant(existing.exam_at,profile?.timezone,{dateStyle:"medium",timeStyle:"short"}):"No date"}<br/>Proposed: {conflict.proposed_exam_at?formatInstant(conflict.proposed_exam_at,profile?.timezone,{dateStyle:"medium",timeStyle:"short"}):"No date"}</p></div><div className="form-actions"><Button variant="secondary" onClick={()=>void resolveExamConflict(conflict,"keep_existing")} disabled={resolvingConflict!==null}>{isResolving&&resolvingConflict.resolution==="keep_existing"?"Keeping…":"Keep existing"}</Button><Button onClick={()=>void resolveExamConflict(conflict,"replace")} disabled={resolvingConflict!==null}>{isResolving&&resolvingConflict.resolution==="replace"?"Applying…":"Use proposed"}</Button></div></div>})}{conflictError&&<p className="form-message" role="alert">{conflictError}</p>}{conflictMessage&&<p className="save-success" role="status">{conflictMessage}</p>}</Card>}
         <Card
           className="upload-zone"
@@ -431,7 +449,7 @@ export function UploadCenterPage() {
             />
           </div>
         </div>
-        {transcriptImports.length > 0 && <Card className="processing-review"><p className="eyebrow">Transcript imports</p><h3>Imported course history</h3><p>Removing an import affects only coursework recorded from that specific transcript. Source files, manual coursework, assignments, exams, and roadmap entries are not removed.</p>{transcriptImports.map(item => { const count=item.academic_record_import_courses?.[0]?.count??0;return <div className="review-row" key={item.id}><div><strong>{count} imported course record{count===1?"":"s"}</strong><p>Imported {formatInstant(item.created_at,profile?.timezone,{dateStyle:"medium"})}</p></div><Button variant="secondary" onClick={()=>void removeImportedCourses(item)}>Remove imported courses</Button></div>})}</Card>}
+        {transcriptImports.length > 0 && <Card className="processing-review"><p className="eyebrow">Transcript imports</p><h3>Imported course history</h3><p>Removing an import affects only coursework recorded from that specific transcript. Source files, manual coursework, assignments, exams, and roadmap entries are not removed.</p>{transcriptImports.map(item => { const count=item.course_count;return <div className="review-row" key={item.id}><div><strong>{count} imported course record{count===1?"":"s"}</strong><p>Imported {formatInstant(item.created_at,profile?.timezone,{dateStyle:"medium"})}</p></div><Button variant="secondary" onClick={()=>void removeImportedCourses(item)}>Remove imported courses</Button></div>})}</Card>}
         {files.length ? (
           <div className="uploaded-file-list">
             {files.map((row) => {
