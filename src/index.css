@@ -80,16 +80,21 @@ button.calendar-event { display:block; width:100%; border:0; text-align:left; cu
 
 :root[data-theme="dark"] { --bg:#202622; --surface:#2a312c; --white:#303832; --ink:#f0eee7; --muted:#c1c8bd; --green:#aac6ab; --deep:#d2e2d0; --line:#465047; --sage:#405548; --gold:#625a3f; --rose:#62494a; --blue:#3d5158; --clay:#5a4b43; --shadow:0 10px 32px rgba(0,0,0,.22); }
 :root[data-theme="dark"] .sidebar,:root[data-theme="dark"] .mobile-nav { background:var(--white); }:root[data-theme="dark"] .btn-secondary,:root[data-theme="dark"] input,:root[data-theme="dark"] select,:root[data-theme="dark"] textarea,:root[data-theme="dark"] .reflection textarea,:root[data-theme="dark"] .canvas-domain-field input { background:var(--white); color:var(--ink); border-color:var(--line); }:root[data-theme="dark"] .btn-primary { color:#172019; background:var(--green); }:root[data-theme="dark"] .btn-primary:hover { background:var(--deep); }:root[data-theme="dark"] .nav-item:hover,:root[data-theme="dark"] .nav-item.active,:root[data-theme="dark"] .moods .selected { background:#405044; color:var(--ink); border-color:var(--green); }:root[data-theme="dark"] .focus-item,:root[data-theme="dark"] .flashcard,:root[data-theme="dark"] .quick-summary,:root[data-theme="dark"] .exam-card,:root[data-theme="dark"] .study-card,:root[data-theme="dark"] .double-check { background:var(--surface); color:var(--ink); }:root[data-theme="dark"] .landing-hero,:root[data-theme="dark"] .auth-page { background:radial-gradient(circle at top,#344439,transparent 55%); }:root[data-theme="dark"] .form-message { color:#ffb8b4!important; }:root[data-theme="dark"] .chat-card .message.from-user>p { color:#172019!important; }
-/* Companion dark mode: assistant bubbles and several buttons keep a light sage/off-white
-   surface on purpose in dark mode (matching the light-mode chip look), so their text must
-   stay pinned dark rather than following --ink/--deep, which intentionally flip light for
-   text sitting directly on the dark page background. Reusing #172019, the same dark text
-   already used for the from-user bubble above, keeps one consistent "dark text on a light
-   Pathly surface" treatment across Companion. (The generic ".card p:not(.eyebrow){color:
-   var(--muted)}" rule above outranks plain ".message p" by specificity, which is also why
-   the light-mode ".message p" color needed !important -- without it assistant text silently
-   rendered muted gray instead of --ink even in light mode.) */
-:root[data-theme="dark"] .message:not(.from-user) p { color:#172019!important; }
+/* Companion dark mode. The generic ".card p:not(.eyebrow){color:var(--muted)}" rule above
+   outranks plain ".message p" by specificity, which is also why the light-mode ".message p"
+   color needed !important -- without it assistant text silently rendered muted gray instead
+   of --ink even in light mode.
+   Assistant bubbles: the near-white light-mode chip (#eff4ef) read as harsh/washed-out
+   against the dark page, so dark mode instead gives them a genuinely dark, muted --sage
+   surface with --ink (soft off-white) text -- the same "readable text on its own themed
+   surface" idiom as the rest of the dark palette, rather than keeping a light chip. The
+   from-user bubble intentionally stays the opposite way (light --deep surface, dark text)
+   so the two speakers remain visually distinct.
+   Buttons below keep the light --green/white-ish surface from light mode (a smaller, more
+   button-like chip rather than a full reading surface), so they still need dark text pinned
+   via #172019 rather than following --ink, which would go light-on-light like the bubble bug
+   above. */
+:root[data-theme="dark"] .message:not(.from-user) p { background:var(--sage); color:var(--ink)!important; }
 :root[data-theme="dark"] .chat-toolbar .chat-new,:root[data-theme="dark"] .chat-input button,:root[data-theme="dark"] .chat-confirm button:first-child,:root[data-theme="dark"] .suggestions button { color:#172019; }
 :root[data-theme="dark"] .chat-error { color:#ffb8b4!important; }
 
