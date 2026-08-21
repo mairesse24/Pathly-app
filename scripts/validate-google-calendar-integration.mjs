@@ -7,6 +7,7 @@ const start = readFileSync("supabase/functions/google-calendar-oauth-start/index
 const callback = readFileSync("supabase/functions/google-calendar-oauth-callback/index.ts", "utf8")
 const sync = readFileSync("supabase/functions/google-calendar-sync/index.ts", "utf8")
 const disconnect = readFileSync("supabase/functions/google-calendar-disconnect/index.ts", "utf8")
+const envExample = readFileSync(".env.example", "utf8")
 
 for (const table of ["google_calendar_connections", "google_calendar_credentials", "google_calendar_oauth_states", "google_calendars", "calendar_busy_periods"]) assert.match(migration, new RegExp(`alter table public\\.${table} enable row level security`))
 assert.match(migration, /revoke all on public\.google_calendar_credentials from anon, authenticated/)
@@ -22,4 +23,16 @@ assert.match(sync, /freeBusy/)
 assert.match(sync, /onConflict: "connection_id,calendar_id,starts_at,ends_at"/)
 assert.doesNotMatch(sync, /assignments|exams|study_sessions/)
 assert.match(disconnect, /google_calendar_connections"\)\.delete/)
+for (const name of [
+  "GOOGLE_CALENDAR_CLIENT_ID",
+  "GOOGLE_CALENDAR_CLIENT_SECRET",
+  "GOOGLE_CALENDAR_REDIRECT_URI",
+  "GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY",
+  "PATHLY_APP_URL",
+]) {
+  assert.match(shared, new RegExp(`Deno\\.env\\.get\\("${name}"\\)`))
+  assert.match(envExample, new RegExp(name))
+}
+assert.match(envExample, /GOOGLE_CALENDAR_REDIRECT_URI=https:\/\/qyteadrlrsjuhtwggayk\.supabase\.co\/functions\/v1\/google-calendar-oauth-callback/)
+assert.match(envExample, /PATHLY_APP_URL=https:\/\/pathly-app-git-agent-product-polish-pathly6\.vercel\.app/)
 console.log("Google Calendar integration security and data-boundary checks passed")
