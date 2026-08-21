@@ -74,6 +74,22 @@ export async function approveSyllabus(input: {
   const { error } = await supabase.rpc("approve_syllabus_processing", {
     p_processing_id: input.processing.id, p_assignments: assignments, p_exams: exams, p_course_id: input.courseId, p_course_metadata: input.courseMetadata || {}, p_roadmap: roadmap,
   })
-  if (error) throw error
+  if (error) throw syllabusApprovalError(error)
   return { ...input.processing, course_id: input.courseId, status: "approved", approved_at: new Date().toISOString() } as ProcessingResultRecord
+}
+
+export function syllabusApprovalError(error: unknown) {
+  const databaseError = error as { code?: string; message?: string; details?: string } | null
+  const code = databaseError?.code || "unknown"
+  const category = code === "42501"
+    ? "permission_denied"
+    : code === "PGRST202" || code === "42883"
+      ? "rpc_contract_mismatch"
+      : code === "22023"
+        ? "invalid_review_payload"
+        : code === "42702"
+          ? "rpc_query_error"
+          : databaseError?.message?.split(":", 1)[0] || "syllabus_approval_failed"
+  const detail = databaseError?.message || databaseError?.details || "The server did not provide an error message."
+  return new Error(`Syllabus approval failed (${category}): ${detail}`)
 }
