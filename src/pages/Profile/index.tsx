@@ -10,6 +10,8 @@ import { useAuth } from "../../context/AuthContext"
 
 import { useProfile } from "../../context/ProfileContext"
 
+import { GraduationYearField } from "../../components/profile/GraduationYearField"
+
 import type { ProfileMetadata } from "../../services/profiles"
 
 const emptyProfile: ProfileMetadata = {
@@ -118,23 +120,10 @@ export function ProfilePage() {
                   }
                 />
               </label>
-              <label>
-                Graduation year
-                <input
-                  type="number"
-                  min="1900"
-                  max="2200"
-                  value={draft.graduation_year ?? ""}
-                  onChange={(event) =>
-                    setDraft({
-                      ...draft,
-                      graduation_year: event.target.value
-                        ? Number(event.target.value)
-                        : null,
-                    })
-                  }
-                />
-              </label>
+              <GraduationYearField
+                value={draft.graduation_year}
+                onChange={(next) => setDraft({ ...draft, graduation_year: next })}
+              />
               <label>
                 Preferred study time (optional)
                 <select

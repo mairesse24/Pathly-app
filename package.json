@@ -35,6 +35,8 @@
     "test:calendar-roadmap-study-integration": "node scripts/validate-calendar-roadmap-study-integration.mjs",
     "test:companion-behavior": "node --experimental-strip-types --test src/utils/companionBehavior.test.ts",
     "test:companion-knowledge-routing": "node scripts/validate-companion-knowledge-routing.mjs",
+    "test:graduation-year": "node --experimental-strip-types --test src/utils/graduationYear.test.ts",
+    "test:graduation-year-input": "node scripts/validate-graduation-year-input.mjs",
     "preview": "vite preview",
     "format": "oxfmt"
   },
