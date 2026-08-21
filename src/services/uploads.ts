@@ -26,7 +26,7 @@ export function validateUpload(file: File) {
 }
 
 export async function listUploads(courseId?: string) {
-  let query = supabase.from("uploaded_files").select("*").order("created_at", { ascending: false })
+  let query = supabase.from("active_uploaded_files").select("*").order("created_at", { ascending: false })
   if (courseId) query = query.eq("course_id", courseId)
   const { data, error } = await query
   if (error) throw error
@@ -84,8 +84,14 @@ export async function deleteUpload(row: UploadedFileRecord) {
     .from(SOURCE_BUCKET)
     .remove([row.storage_path])
   if (storageError) throw storageError
-  const { error } = await supabase.from("uploaded_files").delete().eq("id", row.id)
+  const { data, error } = await supabase
+    .from("uploaded_files")
+    .delete()
+    .eq("id", row.id)
+    .select("id")
+    .maybeSingle()
   if (error) throw error
+  if (!data) throw new Error("The file metadata could not be deleted. Refresh and try again.")
 }
 
 export async function reassociateSyllabusCourse(processingId: string, courseId: string) {
