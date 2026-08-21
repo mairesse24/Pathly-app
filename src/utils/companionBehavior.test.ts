@@ -118,6 +118,16 @@ test("a next-semester planning question tied to a graduation target requests the
   assert.equal(intent.wantsDegree, true)
 })
 
+// Regression: this exact real report phrase says neither "degree" nor "graduat[e]" -- before
+// the wantsDegree pattern included "next semester", this question fetched only day-to-day
+// planning context (assignments/exams due soon), never the Degree Planner's remaining-
+// requirement data, so Companion had nothing to plan next semester from except "please
+// upload your catalog/prerequisites/offerings/advisor notes".
+test("'Help me plan next semester' requests the degree lookup even without the words degree or graduate", () => {
+  const intent = classifyCompanionIntent("Help me plan next semester")
+  assert.equal(intent.wantsDegree, true)
+})
+
 // Regression coverage for: Companion correctly used a confirmed Degree Audit and identified
 // remaining requirements, but then stopped at "Pathly needs more information" instead of
 // giving a provisional, requirement-category-level plan. Deliberately uses a non-CSCE,
@@ -193,6 +203,95 @@ test("system prompt gives a provisional requirement-category strategy for a next
   // present in context for the model to reason from.
   assert.match(system, /Senior Capstone Recital/)
   assert.match(system, /Major Core Requirements/)
+})
+
+// Second real Companion example for the same fix: "Help me plan next semester" against a
+// verified_catalog Degree Planner source (the shape pathly-companion/index.ts actually builds
+// for a matched program), 19 total credits remaining, and a real two-course capstone sequence
+// expressed the way the live system actually expresses it -- not as a distinct top-level
+// requirement group, but as a prerequisite on one remaining_courses entry naming another. The
+// instruction must recognize that shape generically (it names no course codes itself) and must
+// order a still-open required category ahead of an elective-style one, never lead with an
+// upload-list, and close by inviting more detail rather than demanding it up front.
+test("system prompt gives a credits-remaining-anchored, priority-ordered plan for 'Help me plan next semester' against a real verified-catalog Degree Planner shape", () => {
+  const degreePlanner = {
+    supported: true,
+    requirement_source: "verified_catalog",
+    provenance_label: "Verified program requirements",
+    program: { university: "University of North Texas", major: "Computer Science", catalog_year: 2025, total_credits_required: 120 },
+    catalog_label: "2025–2026",
+    completed_credits: 101,
+    percent_complete: 84,
+    target_graduation_term: null,
+    requirement_progress: [
+      {
+        name: "Computer Science Required Courses",
+        description: "Explicitly required CSCE courses in the official 2025-2026 guidebook.",
+        completed_credits: 34,
+        required_credits: 40,
+        remaining_credits: 6,
+        remaining_courses: [
+          { course_code: "CSCE 4901", course_title: "Capstone I", prerequisite: "Prerequisites: TECM 2700 and CSCE 3444." },
+          { course_code: "CSCE 4902", course_title: "Capstone II", prerequisite: "Prerequisite: CSCE 4901." },
+        ],
+        satisfied_courses: ["CSCE 1010", "CSCE 2100", "CSCE 2110"],
+        requires_degree_audit_review: false,
+      },
+      {
+        name: "Science with Lab",
+        description: "Two lab-science selections. Eligible options must be confirmed in the student degree audit.",
+        completed_credits: 0,
+        required_credits: 6,
+        remaining_credits: 6,
+        remaining_courses: [],
+        satisfied_courses: [],
+        requires_degree_audit_review: true,
+      },
+      {
+        name: "CSCE Option Courses",
+        description: "Choose 6 hours from CSCE Options shown in the student degree audit.",
+        completed_credits: 0,
+        required_credits: 6,
+        remaining_credits: 6,
+        remaining_courses: [],
+        satisfied_courses: [],
+        requires_degree_audit_review: true,
+      },
+    ],
+    degree_audit_supplement: null,
+  }
+  const system = buildCompanionSystemPrompt({
+    localToday: "2026-08-21",
+    timeZone: "America/Chicago",
+    allowedLabels: ["Degree Planner"],
+    context: [`Degree Planner: ${JSON.stringify(degreePlanner)}`],
+  })
+
+  // Opens from a concrete remaining-credits anchor, not a bare refusal or an upload list.
+  assert.match(system, /state total remaining_credits.*when it is known/i)
+  assert.match(system, /You have N credits remaining after this semester, so we can already start shaping next semester/)
+  assert.match(system, /never open this kind of answer with a list of things to upload/i)
+
+  // Explicit, generic priority ordering: sequence/capstone first, other required categories
+  // next, electives last -- described structurally, with no hardcoded course/category name.
+  assert.match(system, /Sequential or capstone-style requirements first/)
+  assert.match(system, /remaining_courses entry's own prerequisite text naming another remaining_courses entry/)
+  assert.match(system, /Other remaining required \(non-elective\) categories next/)
+  assert.match(system, /prioritized ahead of filling the semester with electives/)
+  assert.match(system, /Remaining advanced\/elective requirements last/)
+  assert.match(system, /only make that dual-credit claim when the data actually shows it/)
+
+  // Closes by inviting more detail to build an exact schedule, not by demanding it upfront.
+  assert.match(system, /so Pathly can turn these priorities into a specific schedule/)
+
+  // This student's own real data -- including the capstone sequence expressed only via one
+  // remaining course's prerequisite text naming the other, exactly as pathly-companion/index.ts
+  // actually shapes it -- is present for the model to reason from.
+  assert.match(system, /Capstone I/)
+  assert.match(system, /Capstone II/)
+  assert.match(system, /Prerequisite: CSCE 4901/)
+  assert.match(system, /Science with Lab/)
+  assert.match(system, /CSCE Option Courses/)
 })
 
 test("system prompt still tells the model to use stored context once it is relevant, and keeps the data available", () => {

@@ -38,8 +38,12 @@ export function classifyCompanionIntent(message: string): CompanionIntent {
       /note|summary|key concept|flashcard|practice question|study material|explain|quiz/.test(
         lower,
       ),
+    // "Help me plan next semester" mentions neither "degree" nor "graduat[e]" -- without this,
+    // that exact question never fetched Degree Planner context at all, so Companion had no
+    // remaining-requirement data to plan from and fell back to asking the student to upload
+    // catalogs/prerequisites/offerings, even when a confirmed Degree Audit already existed.
     wantsDegree:
-      /degree|graduat|requirement.*left|credits.*completed|academic progress/.test(
+      /degree|graduat|requirement.*left|credits.*completed|academic progress|next semester|semester.*plan|plan.*semester/.test(
         lower,
       ),
   }
