@@ -4,9 +4,10 @@ import { PageHeader } from "../../components/layout/PageHeader"
 import { Button } from "../../components/ui/Button"
 import { Card } from "../../components/ui/Card"
 import { useProfile } from "../../context/ProfileContext"
-import { calculateDegreeProgress, deleteCompletedCourse, getActiveUserDegreePlan, getRequirementGroups, listCompletedCourses, matchVerifiedProgram, saveCompletedCourse, type CourseInput } from "../../services/degreePlanning"
+import { calculateDegreeProgress, deleteCompletedCourse, getActiveUserDegreePlan, getLatestDegreeAuditUploadState, getRequirementGroups, listCompletedCourses, matchVerifiedProgram, saveCompletedCourse, type CourseInput, type DegreeAuditUploadState } from "../../services/degreePlanning"
 import type { CompletedCourse, DegreeProgram, DegreeProgramMatch, RequirementGroup, UserDegreePlan } from "../../types/degreePlanning"
 import { formatCatalogYear } from "../../utils/catalogYear"
+import { degreeAuditNotice } from "../../utils/degreeAuditStatus"
 
 const empty: CourseInput = { course_code: "", course_title: "", credit_hours: 3, term: null, year: null, status: "completed" }
 
@@ -17,6 +18,7 @@ export function DegreePlannerPage() {
   const [program, setProgram] = useState<DegreeProgram | null>(null)
   const [programMatch, setProgramMatch] = useState<DegreeProgramMatch | null>(null)
   const [auditPlan, setAuditPlan] = useState<UserDegreePlan | null>(null)
+  const [latestAuditUpload, setLatestAuditUpload] = useState<DegreeAuditUploadState | null>(null)
   const [groups, setGroups] = useState<RequirementGroup[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -33,10 +35,11 @@ export function DegreePlannerPage() {
     setAuditError("")
     setRequirementsError("")
     try {
-      const [courseResult, matchResult, auditResult] = await Promise.allSettled([
+      const [courseResult, matchResult, auditResult, auditUploadResult] = await Promise.allSettled([
         listCompletedCourses(),
         matchVerifiedProgram(profile?.university, profile?.major, profile?.catalog_year),
         getActiveUserDegreePlan(),
+        getLatestDegreeAuditUploadState(),
       ])
       if (courseResult.status === "fulfilled") setCourses(courseResult.value)
       else setError("Your completed coursework could not be loaded. Try refreshing this page.")
@@ -50,7 +53,8 @@ export function DegreePlannerPage() {
         } else setGroups([])
       } else setRequirementsError("Pathly could not check verified program requirements right now. Your completed courses are still available below.")
       if (auditResult.status === "fulfilled") setAuditPlan(auditResult.value)
-      else setAuditError("Your supplemental degree audit could not be loaded. Verified progress remains available.")
+      else setAuditError("Your confirmed supplemental degree plan could not be loaded. Verified catalog progress and manually entered coursework, when available, remain separate and unchanged.")
+      if (auditUploadResult.status === "fulfilled") setLatestAuditUpload(auditUploadResult.value)
     } finally {
       setLoading(false)
     }
@@ -58,6 +62,7 @@ export function DegreePlannerPage() {
 
   useEffect(() => { void load() }, [profileLoading, profile?.university, profile?.major, profile?.catalog_year])
   const progress = useMemo(() => program ? calculateDegreeProgress(program, groups, courses, auditPlan) : null, [program, groups, courses, auditPlan])
+  const auditNotice = degreeAuditNotice(latestAuditUpload)
 
   async function save(event: FormEvent) {
     event.preventDefault()
@@ -91,6 +96,7 @@ export function DegreePlannerPage() {
     <p className="academic-disclaimer">Pathly helps you organize and understand academic information, but it does not replace your university&apos;s official records or an academic advisor. AI-generated summaries and extracted dates can make mistakes. Review important information before relying on it.</p>
     {requirementsError && <p className="form-message section-error" role="alert">{requirementsError}</p>}
     {auditError && <p className="form-message section-error" role="alert">{auditError}</p>}
+    {auditNotice && <Card className="section-error"><h3>{auditNotice.title}</h3><p>{auditNotice.message}</p><Button variant="secondary" onClick={() => navigate("/uploads?category=degree_audit")}>{auditNotice.action}</Button></Card>}
     <Card className="degree-metadata"><p className="eyebrow">Program information</p><h3>{profile?.major || "Major not added"}</h3><p>{profile?.university || "University not added"}{profile?.catalog_year ? ` · ${formatCatalogYear(profile.catalog_year)} catalog` : ""}</p>{(profile?.graduation_year || profile?.expected_graduation_term) && <p>Expected graduation: {[profile.expected_graduation_term, profile.graduation_year].filter(Boolean).join(" ")} (provided by you; not a Pathly prediction)</p>}<Button variant="secondary" onClick={() => navigate("/settings")}>Edit in Settings</Button></Card>
     {loading ? <Card><p>Loading your academic record…</p></Card> : program && progress ? <>
       <Card className="degree-progress-card"><p className="eyebrow">Total degree credits</p><h2>{progress.completedCredits} / {program.total_credits_required} completed</h2><p>{program.university} · {program.major} · {formatCatalogYear(program.catalog_year)}</p><div className="wide-progress" aria-label={`${progress.percent}% complete`}><i style={{width:`${progress.percent}%`}}/></div>{progress.inProgressCredits > 0 && <p><strong>{progress.inProgressCredits} credits in progress</strong> (not counted as completed)</p>}<p>{Math.max(0,Number(program.total_credits_required)-progress.completedCredits)} credits needed to reach the {program.total_credits_required}-credit minimum.</p><small>Courses may satisfy both the {program.total_credits_required}-credit degree minimum and specific requirements below. Remaining requirement credits should not be added together. Source: <a href={program.source_url} target="_blank" rel="noreferrer">{program.source_title}</a></small></Card>

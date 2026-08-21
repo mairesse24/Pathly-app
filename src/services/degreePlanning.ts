@@ -1,6 +1,7 @@
 import { supabase } from "../lib/supabase"
 import type { CompletedCourse, DegreeProgram, DegreeProgramMatch, RequirementGroup, UserDegreePlan } from "../types/degreePlanning"
 import { calculateDegreeProgress as calculateDeterministicProgress } from "../utils/degreeProgress"
+import type { UploadedFileRecord } from "../types/uploads"
 
 export type CourseInput = Pick<CompletedCourse, "course_code" | "course_title" | "credit_hours" | "term" | "year" | "status">
 const normalize = (value: string) => value.trim().toUpperCase().replace(/\s+/g, " ")
@@ -46,7 +47,7 @@ export async function getActiveUserDegreePlan() {
   if (groupError) throw groupError
   const groupIds = (groups || []).map((group) => group.id)
   const { data: requirements, error: requirementError } = groupIds.length
-    ? await supabase.from("user_degree_requirements").select("*").in("group_id", groupIds).order("sort_order")
+    ? await supabase.from("user_degree_requirements").select("*").in("group_id", groupIds).order("confirmed_at").order("id")
     : { data: [], error: null }
   if (requirementError) throw requirementError
   return {
@@ -56,6 +57,17 @@ export async function getActiveUserDegreePlan() {
       user_degree_requirements: (requirements || []).filter((item) => item.group_id === group.id),
     })),
   } as UserDegreePlan
+}
+export type DegreeAuditUploadState = Pick<UploadedFileRecord, "id" | "processing_status" | "processing_error_code" | "created_at">
+export async function getLatestDegreeAuditUploadState() {
+  const { data, error } = await supabase.from("uploaded_files")
+    .select("id,processing_status,processing_error_code,created_at")
+    .eq("category", "degree_audit")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return data as DegreeAuditUploadState | null
 }
 export function calculateDegreeProgress(program: DegreeProgram, groups: RequirementGroup[], courses: CompletedCourse[], auditPlan: UserDegreePlan | null = null) {
   return calculateDeterministicProgress(program, groups, courses, auditPlan)
