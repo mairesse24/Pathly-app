@@ -17,6 +17,7 @@ import { useAcademicData } from "../../context/AcademicDataContext"
 import { useAuth } from "../../context/AuthContext"
 import { useProfile } from "../../context/ProfileContext"
 import { listProcessingResults, processUpload } from "../../services/processing"
+import { listTranscriptImports, previewTranscriptImportRemoval, removeTranscriptImport, type TranscriptImport } from "../../services/transcriptImports"
 import { listPendingSyllabusExamConflicts, resolveSyllabusExamConflict, type SyllabusExamConflict } from "../../services/syllabusExamConflicts"
 
 import {
@@ -76,6 +77,7 @@ export function UploadCenterPage() {
   const [files, setFiles] = useState<UploadedFileRecord[]>([])
 
   const [results, setResults] = useState<ProcessingResultRecord[]>([])
+  const [transcriptImports, setTranscriptImports] = useState<TranscriptImport[]>([])
   const [examConflicts, setExamConflicts] = useState<SyllabusExamConflict[]>([])
   const [resolvingConflict, setResolvingConflict] = useState<{ id: string; resolution: "keep_existing" | "replace" } | null>(null)
   const [conflictMessage, setConflictMessage] = useState("")
@@ -92,11 +94,12 @@ export function UploadCenterPage() {
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    Promise.all([listUploads(), listProcessingResults(), listPendingSyllabusExamConflicts()])
-      .then(([uploads, processing, conflicts]) => {
+    Promise.all([listUploads(), listProcessingResults(), listPendingSyllabusExamConflicts(), listTranscriptImports()])
+      .then(([uploads, processing, conflicts, imports]) => {
         setFiles(uploads)
         setResults(processing)
         setExamConflicts(conflicts)
+        setTranscriptImports(imports)
       })
       .catch((reason: unknown) => {
         setState("error")
@@ -257,6 +260,8 @@ export function UploadCenterPage() {
             : "Your candidate coursework is ready to review.",
       )
     } catch {
+      const refreshed = await listUploads().catch(() => null)
+      const failed = refreshed?.find((item) => item.id === row.id)
       setFiles((current) =>
         current.map((item) =>
           item.id === row.id
@@ -264,6 +269,8 @@ export function UploadCenterPage() {
                 ...item,
                 processing_status: "processing_failed",
                 processing_stage: null,
+                processing_error_code: failed?.processing_error_code ?? item.processing_error_code,
+                error_message: failed?.error_message ?? item.error_message,
               }
             : item,
         ),
@@ -295,6 +302,27 @@ export function UploadCenterPage() {
       setMessage(
         reason instanceof Error ? reason.message : "Unable to delete the file.",
       )
+    }
+  }
+
+  async function removeImportedCourses(item: TranscriptImport) {
+    try {
+      const preview = await previewTranscriptImportRemoval(item.id)
+      const details = [
+        `${preview.imported_records} imported course record${preview.imported_records === 1 ? "" : "s"}`,
+        `${preview.completed_course_rows_deleted} completed-course row${preview.completed_course_rows_deleted === 1 ? "" : "s"} removed`,
+        preview.completed_course_rows_restored ? `${preview.completed_course_rows_restored} restored from another transcript` : "",
+        preview.manual_rows_preserved ? `${preview.manual_rows_preserved} manual course${preview.manual_rows_preserved === 1 ? "" : "s"} preserved` : "",
+      ].filter(Boolean).join("; ")
+      if (!window.confirm(`Remove this transcript import? ${details}. This can only be reversed by re-importing the transcript.`)) return
+      await removeTranscriptImport(item.id)
+      setTranscriptImports(current => current.filter(value => value.id !== item.id))
+      await refreshAcademicData()
+      setState("success")
+      setMessage("Transcript-imported course history removed. Other uploads and manually added coursework were preserved.")
+    } catch (reason) {
+      setState("error")
+      setMessage(reason instanceof Error ? reason.message : "Unable to remove imported courses.")
     }
   }
 
@@ -403,6 +431,7 @@ export function UploadCenterPage() {
             />
           </div>
         </div>
+        {transcriptImports.length > 0 && <Card className="processing-review"><p className="eyebrow">Transcript imports</p><h3>Imported course history</h3><p>Removing an import affects only coursework recorded from that specific transcript. Source files, manual coursework, assignments, exams, and roadmap entries are not removed.</p>{transcriptImports.map(item => { const count=item.academic_record_import_courses?.[0]?.count??0;return <div className="review-row" key={item.id}><div><strong>{count} imported course record{count===1?"":"s"}</strong><p>Imported {formatInstant(item.created_at,profile?.timezone,{dateStyle:"medium"})}</p></div><Button variant="secondary" onClick={()=>void removeImportedCourses(item)}>Remove imported courses</Button></div>})}</Card>}
         {files.length ? (
           <div className="uploaded-file-list">
             {files.map((row) => {
@@ -487,6 +516,7 @@ export function UploadCenterPage() {
                       upload={row}
                       onCourseChanged={(courseId)=>setFiles(current=>current.map(item=>item.id===row.id?{...item,course_id:courseId}:item))}
                       onApproved={(approved, sourceDeleted) => {
+                        if (approved.kind === "unofficial_transcript") void listTranscriptImports().then(setTranscriptImports)
                         if (sourceDeleted) {
                           setResults((current) => current.filter((item) => item.id !== approved.id))
                           setFiles((current) => current.filter((item) => item.id !== row.id))
