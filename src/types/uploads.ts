@@ -33,7 +33,10 @@ export type SyllabusRoadmapEntry = {
   period_label: string | null
   topic: string
   description: string | null
-  deliverable: string | null
+  // Optional and omittable in the Anthropic-facing schema (not nullable) -- see the
+  // syllabusSchema comment in supabase/functions/_shared/processingSchemas.mjs. May be
+  // absent on the raw AI result; older approved rows may still carry an explicit null.
+  deliverable?: string | null
   date: string | null
 }
 export type SyllabusResult = {
@@ -52,8 +55,11 @@ export type SyllabusResult = {
     value: string
   }> | null
   roadmap: SyllabusRoadmapEntry[]
-  assignments: Array<{ title: string; description: string | null; due_at: string | null; estimated_minutes: number | null }>
-  exams: Array<{ title: string; exam_at: string | null; location: string | null; topics_summary: string | null }>
+  // estimated_minutes/location/topics_summary are optional and omittable in the
+  // Anthropic-facing schema (not nullable) -- see the syllabusSchema comment in
+  // supabase/functions/_shared/processingSchemas.mjs.
+  assignments: Array<{ title: string; description: string | null; due_at: string | null; estimated_minutes?: number | null }>
+  exams: Array<{ title: string; exam_at: string | null; location?: string | null; topics_summary?: string | null }>
 }
 export type LectureResult = {
   title: string

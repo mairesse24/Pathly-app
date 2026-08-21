@@ -36,6 +36,22 @@ export function normalizeSyllabusResult(value) {
   return { ...value, roadmap, assignments, exams }
 }
 
+// Anthropic's structured-output json_schema caps a schema at 16 parameters with union
+// types (anyOf, or a "type" array like ["string","null"]) -- past that, compilation cost
+// grows exponentially and the API rejects the request outright before generation even
+// starts. The schema below previously had exactly 18 (8 top-level course-metadata fields,
+// plus 4 on each roadmap item, 4 on each assignment item, 4 on each exam item), so any
+// syllabus upload failed unconditionally, independent of the document's content. A property
+// not listed in `required` is still ordinary optional JSON Schema -- the model may simply
+// omit it -- and, unlike a `type:["x","null"]` union, an omitted single-typed property does
+// not count against this limit. The four genuinely optional, nice-to-have fields below
+// (roadmap.deliverable, assignments.estimated_minutes, exams.location,
+// exams.topics_summary) were converted from required-and-nullable to optional-and-omittable
+// to bring the count to 14, comfortably under the limit. Every consumer of this result
+// (normalizeSyllabusResult below, the approve_syllabus_processing RPC's `->>` JSONB
+// accessors, and ProcessingReview.tsx) already treats a missing key identically to an
+// explicit null, so this is a pure schema-compatibility change with no behavior difference
+// for those paths. See scripts/validate-syllabus-schema-anthropic-compatibility.mjs.
 export const syllabusSchema = {
   type: "object", additionalProperties: false,
   properties: {
@@ -49,14 +65,14 @@ export const syllabusSchema = {
     location: { anyOf: [{ type: "string" }, { type: "null" }] },
     course_summary: { type: "string" },
     roadmap: { type: "array", items: { type: "object", additionalProperties: false, properties: {
-      period_label: { type: ["string", "null"] }, topic: { type: "string" }, description: { type: ["string", "null"] }, deliverable: { type: ["string", "null"] }, date: { type: ["string", "null"] },
-    }, required: ["period_label", "topic", "description", "deliverable", "date"] } },
+      period_label: { type: ["string", "null"] }, topic: { type: "string" }, description: { type: ["string", "null"] }, deliverable: { type: "string" }, date: { type: ["string", "null"] },
+    }, required: ["period_label", "topic", "description", "date"] } },
     assignments: { type: "array", items: { type: "object", additionalProperties: false, properties: {
-      title: { type: "string" }, description: { type: ["string", "null"] }, due_at: { type: ["string", "null"] }, estimated_minutes: { type: ["integer", "null"] },
-    }, required: ["title", "description", "due_at", "estimated_minutes"] } },
+      title: { type: "string" }, description: { type: ["string", "null"] }, due_at: { type: ["string", "null"] }, estimated_minutes: { type: "integer" },
+    }, required: ["title", "description", "due_at"] } },
     exams: { type: "array", items: { type: "object", additionalProperties: false, properties: {
-      title: { type: "string" }, exam_at: { type: ["string", "null"] }, location: { type: ["string", "null"] }, topics_summary: { type: ["string", "null"] },
-    }, required: ["title", "exam_at", "location", "topics_summary"] } },
+      title: { type: "string" }, exam_at: { type: ["string", "null"] }, location: { type: "string" }, topics_summary: { type: "string" },
+    }, required: ["title", "exam_at"] } },
   }, required: ["course_code", "course_title", "instructor", "credits", "meeting_days", "meeting_start", "meeting_end", "location", "course_summary", "roadmap", "assignments", "exams"],
 }
 
