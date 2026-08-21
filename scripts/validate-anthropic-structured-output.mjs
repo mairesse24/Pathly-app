@@ -48,6 +48,7 @@ assert.deepEqual(
     content_block_types: ["tool_use"],
     text_block_count: 0,
     structured_block_count: 1,
+    output_tokens: null,
   },
   "diagnostics must log shape metadata without response content",
 )

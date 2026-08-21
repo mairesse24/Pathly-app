@@ -17,6 +17,7 @@ export function anthropicResponseShape(response) {
     structured_block_count: content.filter((block) =>
       block?.type === "tool_use" || block?.type === "json"
     ).length,
+    output_tokens: Number.isFinite(response?.usage?.output_tokens) ? response.usage.output_tokens : null,
   }
 }
 
