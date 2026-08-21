@@ -24,6 +24,8 @@
     "test:degree-audit-isolation": "node scripts/validate-degree-audit-isolation.mjs",
     "test:degree-audit-transcript-isolation": "node scripts/validate-degree-audit-transcript-isolation.mjs",
     "test:degree-plan-bulk-removal": "node scripts/validate-degree-plan-bulk-removal.mjs",
+    "test:degree-audit-output-budget": "node scripts/validate-degree-audit-output-budget.mjs",
+    "test:anthropic-structured-output": "node scripts/validate-anthropic-structured-output.mjs",
     "test:course-removal": "node scripts/validate-course-removal.mjs",
     "test:organize-notes": "node scripts/validate-organize-notes.mjs",
     "test:upload-isolation": "node scripts/validate-upload-isolation.mjs",
