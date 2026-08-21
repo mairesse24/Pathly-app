@@ -7,6 +7,7 @@ import {
 import { buildSmartPlan } from "../_shared/smartPlanning.ts"
 import { classifyCompanionIntent } from "../_shared/companionIntent.ts"
 import { buildCompanionSystemPrompt } from "../_shared/companionPrompt.ts"
+import { summarizeAuditRequirementGroups } from "../_shared/companionDegreeSummary.ts"
 
 const headers = {
   "Access-Control-Allow-Origin": "*",
@@ -56,6 +57,11 @@ function localDateKey(date: Date, timeZone: string) {
   const part = (type: string) => parts.find((item) => item.type === type)?.value
   return `${part("year")}-${part("month")}-${part("day")}`
 }
+// How long a claimed-but-unanswered user message is treated as "still in flight" before a
+// resend is allowed to retry it instead of getting permanently stuck behind 409. Comfortably
+// longer than a normal Companion turn (well under 2s of Anthropic latency plus a handful of
+// small Supabase queries) and comfortably shorter than the 30s dedupe bucket in duplicateClaim.
+const STALE_CLAIM_MS = 20_000
 async function duplicateClaim(userId: string, message: string) {
   const bucket = Math.floor(Date.now() / 30_000)
   const bytes = new TextEncoder().encode(`${userId}\n${bucket}\n${message}`)
@@ -126,31 +132,52 @@ Deno.serve(async (req: Request) => {
     }
     const dedupeKey = await duplicateClaim(user.id, message)
     const { data: claimed } = await admin.from("companion_messages").select("*").eq("user_id", user.id).eq("dedupe_key", dedupeKey).eq("role", "user").maybeSingle()
+    let userMessage = claimed
+    let createdConversation = false
     if (claimed) {
       const { data: existing } = await admin.from("companion_messages").select("*").eq("conversation_id", claimed.conversation_id).eq("request_id", claimed.request_id).eq("role", "assistant").maybeSingle()
-      const { data: conversation } = await admin.from("companion_conversations").select("*").eq("id", claimed.conversation_id).eq("user_id", user.id).single()
-      if (existing) return respond({ conversation, user_message: claimed, message: existing })
-      return respond({ error: "request_in_progress", message: "Pathly is already working on that request." }, 409)
-    }
-    const createdConversation = !conversationId
-    if (!conversationId) {
-      const title = message.length > 60 ? `${message.slice(0, 57)}...` : message
-      const { data: created, error } = await admin
-        .from("companion_conversations")
-        .insert({ user_id: user.id, title })
-        .select("*")
-        .single()
-      if (error) throw error
-      conversationId = created.id
-    }
-    const { data: userMessage, error: claimError } = await admin.from("companion_messages").insert({ conversation_id: conversationId, user_id: user.id, role: "user", content: message, dedupe_key: dedupeKey }).select("*").single()
-    if (claimError) {
-      const { data: competing } = await admin.from("companion_messages").select("*").eq("user_id", user.id).eq("dedupe_key", dedupeKey).eq("role", "user").maybeSingle()
-      if (competing) {
-        if (createdConversation) await admin.from("companion_conversations").delete().eq("id", conversationId).eq("user_id", user.id)
+      if (existing) {
+        const { data: conversation } = await admin.from("companion_conversations").select("*").eq("id", claimed.conversation_id).eq("user_id", user.id).single()
+        return respond({ conversation, user_message: claimed, message: existing })
+      }
+      // A claimed user message with no assistant reply yet is either a request genuinely
+      // still in flight (a concurrent duplicate submission -- keep blocking that with 409) or
+      // the leftover of a request that crashed after claiming but before replying (the
+      // PGRST201 500 in this incident is exactly that case). Without this distinction, a
+      // single crash permanently wedges every future resend of that *exact* message behind a
+      // 409 for the rest of its 30-second dedupe bucket, with no way to actually retry it --
+      // the retries the frontend/user then sends can never do anything but re-hit the same
+      // claim and 409 again. Past STALE_CLAIM_MS (well under both a normal Companion turn's
+      // latency and the 30s bucket itself), treat it as abandoned and reuse the existing user
+      // message/conversation/request id to actually attempt the request again, rather than
+      // inserting a duplicate or leaving the student stuck.
+      const claimAgeMs = Date.now() - new Date(claimed.created_at).getTime()
+      if (claimAgeMs < STALE_CLAIM_MS) {
         return respond({ error: "request_in_progress", message: "Pathly is already working on that request." }, 409)
       }
-      throw claimError
+      conversationId = claimed.conversation_id
+    } else {
+      createdConversation = !conversationId
+      if (!conversationId) {
+        const title = message.length > 60 ? `${message.slice(0, 57)}...` : message
+        const { data: created, error } = await admin
+          .from("companion_conversations")
+          .insert({ user_id: user.id, title })
+          .select("*")
+          .single()
+        if (error) throw error
+        conversationId = created.id
+      }
+      const { data: inserted, error: claimError } = await admin.from("companion_messages").insert({ conversation_id: conversationId, user_id: user.id, role: "user", content: message, dedupe_key: dedupeKey }).select("*").single()
+      if (claimError) {
+        const { data: competing } = await admin.from("companion_messages").select("*").eq("user_id", user.id).eq("dedupe_key", dedupeKey).eq("role", "user").maybeSingle()
+        if (competing) {
+          if (createdConversation) await admin.from("companion_conversations").delete().eq("id", conversationId).eq("user_id", user.id)
+          return respond({ error: "request_in_progress", message: "Pathly is already working on that request." }, 409)
+        }
+        throw claimError
+      }
+      userMessage = inserted
     }
     const requestId = userMessage.request_id
 
@@ -264,8 +291,16 @@ Deno.serve(async (req: Request) => {
     if (wantsDegree) {
       const { data: completed = [] } = await admin.from("completed_courses")
         .select("course_code,course_title,credit_hours,status").eq("user_id", user.id)
+      // user_degree_requirement_groups carries two FKs to user_degree_plans (plan_id, and the
+      // composite plan_id+user_id used for owner-scoped joins elsewhere), and
+      // user_degree_requirements carries the same pair to user_degree_requirement_groups. An
+      // unqualified nested embed is genuinely ambiguous between them -- PostgREST has no way to
+      // guess which one was meant -- and fails with PGRST201 the moment this runs at all,
+      // regardless of how many rows exist. This is the exact 500 from the incident: the error
+      // was thrown here and caught by the outer try/catch. Both embeds must name the composite
+      // FK explicitly, matching the owner-scoped pattern used throughout this query.
       const { data: auditPlan, error: auditPlanError } = await admin.from("user_degree_plans")
-        .select("id,university,major,catalog_year,total_credits_required,total_credits_completed,confirmed_at,user_degree_requirement_groups(requirement_label,status,credits_required,credits_completed,credits_remaining,details,user_degree_requirements(requirement_type,course_code,requirement_text,status,credits_applied,application_source))")
+        .select("id,university,major,catalog_year,total_credits_required,total_credits_completed,confirmed_at,user_degree_requirement_groups!user_degree_requirement_groups_plan_id_user_id_fkey(requirement_label,status,credits_required,credits_completed,credits_remaining,details,user_degree_requirements!user_degree_requirements_group_id_user_id_fkey(requirement_type,course_code,requirement_text,status,credits_applied,application_source))")
         .eq("user_id",user.id).eq("status","active").maybeSingle()
       if (auditPlanError) throw auditPlanError
       const { data: programMatch, error: programMatchError } = await admin.rpc("match_degree_program", {
@@ -276,7 +311,7 @@ Deno.serve(async (req: Request) => {
       if (programMatchError) throw programMatchError
       const program = programMatch?.program
       if ((programMatch?.status !== "matched" || !program) && auditPlan) {
-        add("Degree Planner", "course", { supported: true, requirement_source: "degree_audit", provenance_label: "Based on your degree audit", confirmed_at: auditPlan.confirmed_at, university: auditPlan.university, major: auditPlan.major, catalog_year: auditPlan.catalog_year, completed_credits_shown_by_audit: auditPlan.total_credits_completed, total_credits_required_shown_by_audit: auditPlan.total_credits_required, requirement_progress: auditPlan.user_degree_requirement_groups, message: "Use only the requirements from the degree audit the student reviewed. Do not extrapolate beyond it." })
+        add("Degree Planner", "course", { supported: true, requirement_source: "degree_audit", provenance_label: "Based on your degree audit", confirmed_at: auditPlan.confirmed_at, university: auditPlan.university, major: auditPlan.major, catalog_year: auditPlan.catalog_year, completed_credits_shown_by_audit: auditPlan.total_credits_completed, total_credits_required_shown_by_audit: auditPlan.total_credits_required, requirement_progress: summarizeAuditRequirementGroups(auditPlan.user_degree_requirement_groups), message: "Use only the requirements from the degree audit the student reviewed. Do not extrapolate beyond it." })
       } else if (programMatch?.status !== "matched" || !program) {
         add("Degree Planner", "course", { supported: false, requirement_source: null, ...programMatch, message: "I don't have enough verified or student-confirmed degree information yet. Upload a degree audit and review the extracted requirements first." })
       } else {
@@ -316,7 +351,7 @@ Deno.serve(async (req: Request) => {
           const matchedCredits = matched.reduce((sum: number, option: any) => sum + Number(option.credit_hours), 0)
           return { name: group.name, description: group.description, completed_credits: Math.min(Number(group.minimum_credits), matchedCredits), required_credits: Number(group.minimum_credits), remaining_credits: Math.max(0, Number(group.minimum_credits) - matchedCredits), remaining_courses: groupOptions.filter((option: any) => !confirmed.some((course: any) => matchesOption(course.course_code, option.course_code))).map((option: any) => ({ course_code: option.course_code, course_title: option.course_title, prerequisite: option.prerequisite_text })), satisfied_courses: matched.map((option: any) => confirmed.find((course: any) => matchesOption(course.course_code, option.course_code))?.course_code || option.course_code), requires_degree_audit_review: false }
         })
-        add("Degree Planner", "course", { supported: true, requirement_source: "verified_catalog", provenance_label: "Verified program requirements", program, catalog_label: `${program.catalog_year}–${program.catalog_year + 1}`, completed_credits: completedCredits, in_progress_courses: [...unique.values()].filter((course: any) => course.status === "in_progress"), in_progress_credits: [...unique.values()].filter((course: any) => course.status === "in_progress").reduce((sum: number, course: any) => sum + Number(course.credit_hours), 0), percent_complete: Math.min(100, Math.round(completedCredits / Number(program.total_credits_required) * 100)), target_graduation_term: [profile?.expected_graduation_term, profile?.graduation_year].filter(Boolean).join(" ") || null, requirement_progress: requirementProgress, degree_audit_supplement: auditPlan ? { confirmed_at: auditPlan.confirmed_at, requirement_progress: auditPlan.user_degree_requirement_groups, warning: "The verified catalog remains the baseline. If the audit differs, identify it under things_to_double_check; do not merge or resolve the conflict silently." } : null })
+        add("Degree Planner", "course", { supported: true, requirement_source: "verified_catalog", provenance_label: "Verified program requirements", program, catalog_label: `${program.catalog_year}–${program.catalog_year + 1}`, completed_credits: completedCredits, in_progress_courses: [...unique.values()].filter((course: any) => course.status === "in_progress"), in_progress_credits: [...unique.values()].filter((course: any) => course.status === "in_progress").reduce((sum: number, course: any) => sum + Number(course.credit_hours), 0), percent_complete: Math.min(100, Math.round(completedCredits / Number(program.total_credits_required) * 100)), target_graduation_term: [profile?.expected_graduation_term, profile?.graduation_year].filter(Boolean).join(" ") || null, requirement_progress: requirementProgress, degree_audit_supplement: auditPlan ? { confirmed_at: auditPlan.confirmed_at, requirement_progress: summarizeAuditRequirementGroups(auditPlan.user_degree_requirement_groups), warning: "The verified catalog remains the baseline. If the audit differs, identify it under things_to_double_check; do not merge or resolve the conflict silently." } : null })
       }
     }
     const { data: history = [], error: historyError } = await admin
@@ -495,7 +530,7 @@ Deno.serve(async (req: Request) => {
     const cited = sources.filter((source) =>
       result.sources.includes(source.label),
     )
-    const { data: assistant, error: saveError } = await admin
+    const { data: insertedAssistant, error: saveError } = await admin
       .from("companion_messages")
       .insert({
         conversation_id: conversationId,
@@ -510,7 +545,22 @@ Deno.serve(async (req: Request) => {
       })
       .select("*")
       .single()
-    if (saveError) throw saveError
+    let assistant = insertedAssistant
+    if (saveError) {
+      // companion_messages_conversation_id_request_id_role_key (unique on conversation_id,
+      // request_id, role) is the only way this insert can fail on data it just built itself --
+      // a second concurrent completion for the same request_id, which the stale-claim retry
+      // above makes possible (though rare, since STALE_CLAIM_MS is well past normal latency).
+      // Return the winner's reply instead of a 500 for the loser.
+      if (saveError.code === "23505") {
+        const { data: existingAssistant, error: refetchError } = await admin.from("companion_messages").select("*").eq("conversation_id", conversationId).eq("request_id", requestId).eq("role", "assistant").maybeSingle()
+        if (refetchError) throw refetchError
+        if (!existingAssistant) throw saveError
+        assistant = existingAssistant
+      } else {
+        throw saveError
+      }
+    }
     const { data: conversation } = await admin
       .from("companion_conversations")
       .update({ updated_at: new Date().toISOString() })
