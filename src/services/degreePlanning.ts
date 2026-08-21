@@ -58,6 +58,12 @@ export async function getActiveUserDegreePlan() {
     })),
   } as UserDegreePlan
 }
+export type ConfirmedGuideRemoval = { requirement_groups_removed: number; requirements_removed: number }
+export async function removeConfirmedGuide(planId: string) {
+  const { data, error } = await supabase.rpc("remove_confirmed_guide", { p_plan_id: planId })
+  if (error) throw error
+  return data as ConfirmedGuideRemoval
+}
 export type DegreeAuditUploadState = Pick<UploadedFileRecord, "id" | "processing_status" | "processing_error_code" | "created_at">
 export async function getLatestDegreeAuditUploadState() {
   const { data, error } = await supabase.from("uploaded_files")

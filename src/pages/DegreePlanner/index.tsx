@@ -4,10 +4,12 @@ import { PageHeader } from "../../components/layout/PageHeader"
 import { Button } from "../../components/ui/Button"
 import { Card } from "../../components/ui/Card"
 import { useProfile } from "../../context/ProfileContext"
-import { calculateDegreeProgress, deleteCompletedCourse, getActiveUserDegreePlan, getLatestDegreeAuditUploadState, getRequirementGroups, listCompletedCourses, matchVerifiedProgram, saveCompletedCourse, type CourseInput, type DegreeAuditUploadState } from "../../services/degreePlanning"
+import { calculateDegreeProgress, deleteCompletedCourse, getActiveUserDegreePlan, getLatestDegreeAuditUploadState, getRequirementGroups, listCompletedCourses, matchVerifiedProgram, removeConfirmedGuide, saveCompletedCourse, type CourseInput, type DegreeAuditUploadState } from "../../services/degreePlanning"
+import { listTranscriptImports, previewTranscriptImportRemoval, removeTranscriptImport, type TranscriptImport } from "../../services/transcriptImports"
 import type { CompletedCourse, DegreeProgram, DegreeProgramMatch, RequirementGroup, UserDegreePlan } from "../../types/degreePlanning"
 import { formatCatalogYear } from "../../utils/catalogYear"
 import { degreeAuditNotice } from "../../utils/degreeAuditStatus"
+import { formatInstant } from "../../utils/dateTime"
 
 const empty: CourseInput = { course_code: "", course_title: "", credit_hours: 3, term: null, year: null, status: "completed" }
 
@@ -27,6 +29,13 @@ export function DegreePlannerPage() {
   const [form, setForm] = useState<CourseInput>(empty)
   const [editing, setEditing] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [transcriptImports, setTranscriptImports] = useState<TranscriptImport[]>([])
+  const [importsError, setImportsError] = useState("")
+  const [importMessage, setImportMessage] = useState("")
+  const [removingImportId, setRemovingImportId] = useState("")
+  const [guideMessage, setGuideMessage] = useState("")
+  const [guideError, setGuideError] = useState("")
+  const [removingGuide, setRemovingGuide] = useState(false)
 
   async function load() {
     if (profileLoading) return
@@ -34,12 +43,14 @@ export function DegreePlannerPage() {
     setError("")
     setAuditError("")
     setRequirementsError("")
+    setImportsError("")
     try {
-      const [courseResult, matchResult, auditResult, auditUploadResult] = await Promise.allSettled([
+      const [courseResult, matchResult, auditResult, auditUploadResult, importsResult] = await Promise.allSettled([
         listCompletedCourses(),
         matchVerifiedProgram(profile?.university, profile?.major, profile?.catalog_year),
         getActiveUserDegreePlan(),
         getLatestDegreeAuditUploadState(),
+        listTranscriptImports(),
       ])
       if (courseResult.status === "fulfilled") setCourses(courseResult.value)
       else setError("Your completed coursework could not be loaded. Try refreshing this page.")
@@ -55,8 +66,66 @@ export function DegreePlannerPage() {
       if (auditResult.status === "fulfilled") setAuditPlan(auditResult.value)
       else setAuditError("Your confirmed supplemental degree plan could not be loaded. Verified catalog progress and manually entered coursework, when available, remain separate and unchanged.")
       if (auditUploadResult.status === "fulfilled") setLatestAuditUpload(auditUploadResult.value)
+      if (importsResult.status === "fulfilled") setTranscriptImports(importsResult.value)
+      else setImportsError("Your transcript import history could not be loaded. Completed coursework below is still accurate.")
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Scoped to this one transcript import (by import_id) -- only completed_courses rows this
+  // specific import created or last updated are affected, and only when no other still-active
+  // import also covers that course code (that row is restored to the other import's data
+  // instead of deleted). Manually added coursework (source='manual') and every other import
+  // are structurally untouched: see preview_transcript_import_removal /
+  // remove_transcript_import in supabase/migrations/20260821170000_transcript_import_provenance_and_removal.sql.
+  async function removeImportedCourses(item: TranscriptImport) {
+    setImportMessage("")
+    setImportsError("")
+    try {
+      const preview = await previewTranscriptImportRemoval(item.id)
+      const details = [
+        `${preview.imported_records} imported course record${preview.imported_records === 1 ? "" : "s"}`,
+        `${preview.completed_course_rows_deleted} completed-course row${preview.completed_course_rows_deleted === 1 ? "" : "s"} removed`,
+        preview.completed_course_rows_restored ? `${preview.completed_course_rows_restored} restored from another transcript` : "",
+        preview.manual_rows_preserved ? `${preview.manual_rows_preserved} manual course${preview.manual_rows_preserved === 1 ? "" : "s"} preserved` : "",
+      ].filter(Boolean).join("; ")
+      if (!window.confirm(`Remove this transcript import? ${details}. This can only be reversed by re-importing the transcript.`)) return
+      setRemovingImportId(item.id)
+      await removeTranscriptImport(item.id)
+      setTranscriptImports((current) => current.filter((value) => value.id !== item.id))
+      setCourses(await listCompletedCourses())
+      setImportMessage("Transcript-imported course history removed. Other imports and manually added coursework were preserved.")
+    } catch (reason) {
+      setImportsError(reason instanceof Error ? reason.message : "Unable to remove imported courses.")
+    } finally {
+      setRemovingImportId("")
+    }
+  }
+
+  // Scoped to the single currently-active user_degree_plans row (by id) -- cascades only to
+  // its own user_degree_requirement_groups/user_degree_requirements. completed_courses (this
+  // student's actual completed/in-progress coursework) has no foreign-key path from
+  // user_degree_plans and is never touched; the RPC also refuses to run at all unless this
+  // plan is a guide (total_credits_completed is null), never a personal degree audit. The
+  // source upload is untouched too -- source_upload_id only ever points *at* uploaded_files,
+  // never the reverse, so removing the plan can't cascade toward the file. See
+  // remove_confirmed_guide in supabase/migrations/20260821180000_remove_confirmed_guide.sql.
+  async function removeGuide() {
+    if (!auditPlan) return
+    const groupCount = auditPlan.user_degree_requirement_groups.length
+    if (!window.confirm(`Remove your confirmed program guide? This clears ${groupCount} saved requirement area${groupCount === 1 ? "" : "s"} from Degree Plan. Your completed and in-progress coursework is not affected, and the uploaded file (if kept) is not deleted.`)) return
+    setRemovingGuide(true)
+    setGuideMessage("")
+    setGuideError("")
+    try {
+      await removeConfirmedGuide(auditPlan.id)
+      setAuditPlan(null)
+      setGuideMessage("Confirmed program guide removed. Your completed and in-progress coursework was not changed.")
+    } catch (reason) {
+      setGuideError(reason instanceof Error ? reason.message : "Unable to remove the confirmed guide.")
+    } finally {
+      setRemovingGuide(false)
     }
   }
 
@@ -103,6 +172,7 @@ export function DegreePlannerPage() {
       <h2 className="degree-section-title">Required courses and requirement groups</h2>
       <div className="degree-requirements">{progress.groupProgress.filter(group=>group.requirement_type!=="total_degree").map((group) => <RequirementProgressCard key={group.id} group={group} auditPlan={auditPlan} onUploadAudit={()=>navigate("/uploads?category=degree_audit")}/>)}</div>
       {auditPlan && <VerifiedAuditNote audit={auditPlan} groups={groups}/>}</> : auditPlan ? <AuditPlanView plan={auditPlan}/> : programMatch?.status === "missing_academic_details" ? <TruthfulState title="We need more academic details." text={programMatch.message} action="Add academic details" onAction={() => navigate("/settings")}/> : programMatch?.status === "missing_catalog_year" ? <TruthfulState title={programMatch.message} text={catalogSupportText(programMatch)} action="Add catalog year" onAction={() => navigate("/settings")}/> : programMatch?.status === "unsupported_catalog_year" ? <UnsupportedState title="No confirmed requirement source yet." text={`${programMatch.message} ${catalogSupportText(programMatch)}`} navigate={navigate}/> : programMatch?.status === "program_unavailable" ? <UnsupportedState title="No confirmed requirement source yet." text="Pathly doesn't have independently verified requirements for this program yet. You can upload your degree audit and review the requirements Pathly identifies." navigate={navigate}/> : <UnsupportedState title="No confirmed requirement source yet." text="Pathly doesn't have enough verified or student-confirmed degree information yet." navigate={navigate}/>}
+    {auditPlan && auditPlan.total_credits_completed == null && <Card className="danger-zone"><p className="eyebrow">Confirmed program guide</p><h3>Remove confirmed guide</h3><p>Removes only the requirement areas confirmed from your program/transfer guide ({auditPlan.user_degree_requirement_groups.length} saved). Your completed and in-progress coursework, and any uploaded file you kept, are not affected.</p><Button variant="secondary" className="btn-danger" disabled={removingGuide} onClick={() => void removeGuide()}>{removingGuide ? "Removing…" : "Remove confirmed guide"}</Button>{guideMessage && <p className="save-success" role="status">{guideMessage}</p>}{guideError && <p className="form-message" role="alert">{guideError}</p>}</Card>}
     <Card><p className="eyebrow">Completed coursework</p><h3>Add a course</h3>
       <form className="completed-course-form" onSubmit={save}>
         <label className="course-code-field">Course code<input required maxLength={30} value={form.course_code} onChange={(event) => setForm({...form, course_code: event.target.value})} placeholder="CSCE 2100"/></label>
@@ -115,6 +185,11 @@ export function DegreePlannerPage() {
       </form>
       {courses.length ? <div className="completed-course-list">{courses.map((course) => <div key={course.id}><span><strong>{course.course_code} · {course.course_title}</strong><small>{course.credit_hours} credits · {course.status === "completed" ? "Completed" : "In progress"}{course.term ? ` · ${course.term} ${course.year || ""}` : ""}</small></span><div className="form-actions"><Button variant="quiet" onClick={() => edit(course)}>Edit</Button><Button variant="quiet" onClick={() => void remove(course.id)}>Delete</Button></div></div>)}</div> : <p className="completed-courses-empty">No completed courses added yet.</p>}
     </Card>
+    {importsError && <p className="form-message section-error" role="alert">{importsError}</p>}
+    {transcriptImports.length > 0 && <Card><p className="eyebrow">Transcript imports</p><h3>Remove imported coursework</h3><p>Removing an import affects only coursework recorded from that specific transcript. Manually added coursework, other transcript imports, and unrelated course data are not removed.</p>
+      <div className="completed-course-list">{transcriptImports.map((item) => <div key={item.id}><span><strong>{item.course_count} imported course record{item.course_count === 1 ? "" : "s"}</strong><small>Imported {formatInstant(item.created_at, profile?.timezone, { dateStyle: "medium" })}</small></span><Button variant="quiet" disabled={removingImportId === item.id} onClick={() => void removeImportedCourses(item)}>{removingImportId === item.id ? "Removing…" : "Remove imported coursework"}</Button></div>)}</div>
+      {importMessage && <p className="save-success" role="status">{importMessage}</p>}
+    </Card>}
     <Card><p className="eyebrow">Academic record upload</p><h3>Review before sharing</h3><p>Before uploading, review your document and remove information you don't want Pathly to process. Do not include Social Security numbers, financial information, addresses, or other unnecessary personal information.</p><div className="form-actions"><Button onClick={() => navigate("/uploads?category=unofficial_transcript")}>Upload unofficial transcript</Button><Button variant="secondary" onClick={() => navigate("/uploads?category=degree_audit")}>{auditPlan?"Upload updated degree audit":"Upload degree audit"}</Button></div></Card>
     {error && <p className="form-message" role="alert">{error}</p>}
   </main></>
