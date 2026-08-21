@@ -20,6 +20,7 @@
     "test:course-roadmap-migration": "node scripts/validate-course-roadmap-migration.mjs",
     "test:study-preferences-migration": "node scripts/validate-study-preferences-migration.mjs",
     "test:degree-audit-isolation": "node scripts/validate-degree-audit-isolation.mjs",
+    "test:degree-audit-transcript-isolation": "node scripts/validate-degree-audit-transcript-isolation.mjs",
     "test:course-removal": "node scripts/validate-course-removal.mjs",
     "test:organize-notes": "node scripts/validate-organize-notes.mjs",
     "test:upload-isolation": "node scripts/validate-upload-isolation.mjs",
