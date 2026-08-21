@@ -3,7 +3,22 @@ const nullableNumber = { anyOf: [{ type: "number" }, { type: "null" }] }
 const nullableInteger = { anyOf: [{ type: "integer" }, { type: "null" }] }
 const documentType = { type: "string", enum: ["personal_audit", "program_guide", "unsupported"] }
 
-export const DEGREE_AUDIT_STAGE_MAX_TOKENS = 8000
+// A real large audit ("My Audit.pdf") hit ai_output_truncated at exactly 8000 output tokens
+// with a "thinking" block ahead of the text block -- extended/adaptive thinking was consuming
+// the budget before any structured output could be written. Disabling thinking for these two
+// calls (process-academic-file/index.ts) is the primary fix, but 8000 tokens of pure JSON was
+// already tight even without it: validate-degree-audit-output-budget.mjs's own realistic-large
+// benchmark (100 courses / 30 requirements, well below the hard caps below) measured ~7261/4254
+// tokens per stage, and the requirements stage alone reaches ~8494 tokens at its 60-requirement
+// cap with only 10 codes per requirement -- already over the old budget on legitimate content
+// alone. 14000 is a modest, calculated increase (not an arbitrary jump): it covers the
+// requirements stage's full DEGREE_AUDIT_MAX_REQUIREMENTS cap (~8494 tokens) and the overview
+// stage's full DEGREE_AUDIT_MAX_COURSES cap (~13034 tokens) at realistic, non-maximal field
+// lengths, with headroom. A document that also saturates every field to its individual
+// DEGREE_AUDIT_MAX_*_LENGTH ceiling simultaneously remains an accepted pathological edge case
+// that still fails with the existing ai_output_truncated diagnostic rather than raising this
+// further -- that combination was never guaranteed to fit even before this change.
+export const DEGREE_AUDIT_STAGE_MAX_TOKENS = 14000
 export const DEGREE_AUDIT_MAX_COURSES = 180
 export const DEGREE_AUDIT_MAX_REQUIREMENTS = 60
 export const DEGREE_AUDIT_MAX_CODES_PER_REQUIREMENT = 30

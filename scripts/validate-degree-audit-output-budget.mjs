@@ -15,7 +15,7 @@ import {
   degreeAuditRequirementsSchema,
 } from "../supabase/functions/_shared/degreeAuditCompact.mjs"
 
-assert.equal(DEGREE_AUDIT_STAGE_MAX_TOKENS, 8000)
+assert.equal(DEGREE_AUDIT_STAGE_MAX_TOKENS, 14000)
 assert.equal(DEGREE_AUDIT_MAX_COURSES, 180)
 assert.equal(DEGREE_AUDIT_MAX_REQUIREMENTS, 60)
 assert.equal(DEGREE_AUDIT_MAX_NOTE_LENGTH, 240)
@@ -88,7 +88,7 @@ assert.ok(firstRequirement, "a requirement whose label was clamped must still be
 assert.ok(firstRequirement.applied_courses.some((course) => course.course_code === longCourseCode.trim().slice(0, DEGREE_AUDIT_MAX_COURSE_CODE_LENGTH)), "a course with a clamped requirement_label must still be matched to its (identically clamped) requirement group")
 
 // Token-budget check: a large, realistic (not maximum-length) audit's own per-stage output
-// must fit in that stage's own 8000-token budget. This is deliberately measured per stage,
+// must fit in that stage's own 14000-token budget. This is deliberately measured per stage,
 // not on the post-combine result -- combineDegreeAuditStages adds applied_courses by
 // cross-referencing the overview stage's own course data onto each requirement, so the merged
 // artifact is legitimately larger than anything either Claude call alone ever has to generate;
@@ -99,20 +99,24 @@ assert.ok(firstRequirement.applied_courses.some((course) => course.course_code =
 // per-field caps are a defensive ceiling against one pathological value (tested separately
 // above via combineDegreeAuditStages, which clamps regardless of stage size), not a promise
 // that every one of DEGREE_AUDIT_MAX_COURSES courses simultaneously reaches its own length
-// ceiling -- real audits vary, and the prompt (process-academic-file/index.ts) explicitly asks
-// Claude to keep titles and labels concise. 100 courses / 30 requirements / 10 codes each is a
-// genuinely large audit (most degree programs list well under 60 distinct courses across four
-// years) that comfortably fits. DEGREE_AUDIT_MAX_COURSES=180 itself is a hard safety ceiling on
-// how many items combineDegreeAuditStages will ever retain if the model returns more than
-// expected -- not a claim that 180 full-length real courses always fits in one generation call;
-// if a single stage's real output is too large for its 8000-token budget, Anthropic truncates
-// at max_tokens and that stage fails with the already-handled ai_output_truncated diagnostic
-// rather than silently corrupting or under-reporting the audit.
+// ceiling too -- real audits vary, and the prompt (process-academic-file/index.ts) explicitly
+// asks Claude to keep titles and labels concise. Unlike the pre-fix budget, this benchmark is
+// pushed all the way to DEGREE_AUDIT_MAX_COURSES/DEGREE_AUDIT_MAX_REQUIREMENTS themselves
+// (see degreeAuditCompact.mjs for the exact token math the 14000 figure was chosen from) --
+// that hard cap is what combineDegreeAuditStages will ever retain regardless of how many items
+// Claude returns, so this is the real worst case at realistic field lengths, not an
+// arbitrarily-smaller "large" sample. A document that also saturates every field to its
+// individual DEGREE_AUDIT_MAX_*_LENGTH ceiling at the same time remains an accepted
+// pathological edge case that still fails with the existing ai_output_truncated diagnostic.
 const tokenEstimate = (value) => Math.ceil(JSON.stringify(value).length / 3)
-const largeRealisticCourseCount = 100
-const largeRealisticRequirementCount = 30
+// Deliberately pushed all the way to each hard cap (not just "a large audit" below it): the
+// 14000-token budget was sized specifically to cover DEGREE_AUDIT_MAX_COURSES courses and
+// DEGREE_AUDIT_MAX_REQUIREMENTS requirements at realistic (non-maximal-length) field values --
+// see the reasoning in degreeAuditCompact.mjs. This is the regression check for that math.
+const largeRealisticCourseCount = DEGREE_AUDIT_MAX_COURSES
+const largeRealisticRequirementCount = DEGREE_AUDIT_MAX_REQUIREMENTS
 const largeRealisticCodesPerRequirement = 10
-assert.ok(largeRealisticCourseCount < DEGREE_AUDIT_MAX_COURSES && largeRealisticRequirementCount < DEGREE_AUDIT_MAX_REQUIREMENTS && largeRealisticCodesPerRequirement < DEGREE_AUDIT_MAX_CODES_PER_REQUIREMENT)
+assert.ok(largeRealisticCodesPerRequirement < DEGREE_AUDIT_MAX_CODES_PER_REQUIREMENT)
 const largeRealisticOverview = {
   document_type: "personal_audit",
   university: "State University of Technology and Applied Sciences",
@@ -163,5 +167,21 @@ assert.match(edge, /status:\s*"ready_for_review"/, "a processed degree audit mus
 // Degree Audit and Unofficial Transcript stay on separate extraction paths: only
 // upload.category === "degree_audit" reaches the two-stage schemas/combiner.
 assert.match(edge, /upload\.category === "degree_audit"\)\s*\{/, "the two-stage path must stay gated to degree_audit uploads only")
+
+// The actual root-cause fix: extended/adaptive thinking consumed the entire 8000-token budget
+// on a real large audit (thinking block ahead of the text block, stop_reason max_tokens, 0
+// result rows). Both degree-audit stages must explicitly disable it.
+assert.match(edge, /if \(options\.disableThinking\) body\.thinking = \{ type: "disabled" \}/, "callClaude must support explicitly disabling thinking")
+const overviewCall = edge.match(/callClaude\("degree_audit_overview"[\s\S]*?disableThinking: true \}\)/)
+const requirementsCall = edge.match(/callClaude\("degree_audit_requirements"[\s\S]*?disableThinking: true \}\)/)
+assert.ok(overviewCall, "the degree_audit_overview call must pass disableThinking: true")
+assert.ok(requirementsCall, "the degree_audit_requirements call must pass disableThinking: true")
+// Scoped fix, not a global one: the single syllabus/lecture/unofficial_transcript callClaude
+// call (the `else` branch) must be untouched -- it still calls with exactly 4 positional
+// arguments, no options object, so thinking behavior for those categories is unchanged.
+assert.match(edge, /callClaude\(upload\.category, instruction, upload\.category === "syllabus" \? syllabusSchema : upload\.category === "lecture" \? lectureSchema : academicRecordSchema, 5000\)/, "syllabus/lecture/unofficial_transcript extraction must not pass a thinking option -- this fix is scoped to Degree Audit only")
+// pathly-companion is a separate function entirely and must never be touched by this fix.
+const companion = await readFile(new URL("../supabase/functions/pathly-companion/index.ts", import.meta.url), "utf8")
+assert.doesNotMatch(companion, /disableThinking|thinking:\s*\{\s*type:\s*"disabled"/, "Companion must not be touched by the Degree Audit thinking fix")
 
 console.log(`Large realistic overview/requirements stage estimates (${overviewEstimate}/${requirementsEstimate} tokens) each fit within the ${DEGREE_AUDIT_STAGE_MAX_TOKENS}-token per-stage budget`)
