@@ -20,4 +20,35 @@ type Token = { access_token: string; refresh_token?: string; expires_in: number;
 export async function exchange(values: Record<string, string>) { const settings = config(); const response = await fetch("https://oauth2.googleapis.com/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ client_id: settings.clientId, client_secret: settings.clientSecret, redirect_uri: settings.redirectUri, ...values }), signal: AbortSignal.timeout(15000) }); if (!response.ok) throw new Error(`google_token_${response.status}`); return await response.json() as Token }
 export async function storeCredentials(admin: SupabaseClient, connectionId: string, userId: string, token: Token, priorRefresh?: string) { const access = await encrypt(token.access_token); const refreshValue = token.refresh_token || priorRefresh; if (!refreshValue) throw new Error("refresh_token_missing"); const refresh = await encrypt(refreshValue); const { error } = await admin.from("google_calendar_credentials").upsert({ connection_id: connectionId, user_id: userId, access_token_ciphertext: access.ciphertext, access_token_nonce: access.nonce, refresh_token_ciphertext: refresh.ciphertext, refresh_token_nonce: refresh.nonce, expires_at: new Date(Date.now() + token.expires_in * 1000).toISOString(), updated_at: new Date().toISOString() }, { onConflict: "connection_id" }); if (error) throw error; return token.access_token }
 export async function accessToken(admin: SupabaseClient, connection: { id: string; user_id: string }) { const { data, error } = await admin.from("google_calendar_credentials").select("*").eq("connection_id", connection.id).eq("user_id", connection.user_id).single(); if (error || !data) throw new Error("reauthorization_required"); if (new Date(data.expires_at).getTime() > Date.now() + 60000) return decrypt(data.access_token_ciphertext, data.access_token_nonce); const refresh = await decrypt(data.refresh_token_ciphertext, data.refresh_token_nonce); const token = await exchange({ grant_type: "refresh_token", refresh_token: refresh }); return storeCredentials(admin, connection.id, connection.user_id, token, refresh) }
-export async function googleJson<T>(url: string, token: string, init?: RequestInit) { const response = await fetch(url, { ...init, headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...(init?.headers || {}) }, signal: AbortSignal.timeout(15000) }); if (response.status === 401 || response.status === 403) throw new Error("reauthorization_required"); if (!response.ok) throw new Error(`google_api_${response.status}`); return await response.json() as T }
+function safeGoogleErrorReason(payload: unknown) {
+  if (!payload || typeof payload !== "object") return "unknown"
+  const error = (payload as { error?: unknown }).error
+  if (!error || typeof error !== "object") return "unknown"
+  const status = (error as { status?: unknown }).status
+  const errors = (error as { errors?: unknown }).errors
+  const reason = Array.isArray(errors) && errors[0] && typeof errors[0] === "object"
+    ? (errors[0] as { reason?: unknown }).reason
+    : undefined
+  const value = typeof reason === "string" ? reason : typeof status === "string" ? status : "unknown"
+  return value.toLowerCase().replace(/[^a-z0-9_]+/g, "_").slice(0, 80) || "unknown"
+}
+
+export async function googleJson<T>(url: string, token: string, init?: RequestInit) {
+  const response = await fetch(url, {
+    ...init,
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...(init?.headers || {}) },
+    signal: AbortSignal.timeout(15000),
+  })
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null)
+    const reason = safeGoogleErrorReason(payload)
+    console.error("Google Calendar API request failed", {
+      operation: new URL(url).pathname,
+      status: response.status,
+      reason,
+    })
+    if (response.status === 401 || response.status === 403) throw new Error("reauthorization_required")
+    throw new Error(`google_api_${response.status}_${reason}`)
+  }
+  return await response.json() as T
+}
