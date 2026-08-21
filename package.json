@@ -27,6 +27,7 @@
     "test:account-deletion-cascade": "node scripts/validate-account-deletion-cascade.mjs",
     "test:course-roadmap-session-prefill": "node --experimental-strip-types --test src/utils/roadmapPresentation.test.ts",
     "test:calendar-roadmap-study-integration": "node scripts/validate-calendar-roadmap-study-integration.mjs",
+    "test:companion-behavior": "node --experimental-strip-types --test src/utils/companionBehavior.test.ts",
     "preview": "vite preview",
     "format": "oxfmt"
   },
