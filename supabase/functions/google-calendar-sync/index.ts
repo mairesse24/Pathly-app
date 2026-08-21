@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js@2.5.0/edge-runtime.d.ts"
 import { accessToken, authenticate, corsHeaders, googleJson, respond } from "../_shared/googleCalendar.ts"
+import { chunkSyncWindow, resolveSyncWindow } from "../_shared/googleCalendarSyncWindow.mjs"
 
 type Calendar = { id: string; summary?: string; primary?: boolean; timeZone?: string }
 type SelectedCalendar = { id: string; google_calendar_id: string }
@@ -61,9 +62,9 @@ Deno.serve(async req => {
       return respond({ mode: "choose", calendars })
     }
 
-    const timeMin = body.time_min && !Number.isNaN(Date.parse(body.time_min)) ? new Date(body.time_min) : new Date(Date.now() - 30 * 86400000)
-    const timeMax = body.time_max && !Number.isNaN(Date.parse(body.time_max)) ? new Date(body.time_max) : new Date(Date.now() + 180 * 86400000)
-    if (timeMax <= timeMin || timeMax.getTime() - timeMin.getTime() > 366 * 86400000) return respond({ error: "invalid_sync_window" }, 400)
+    const syncWindow = resolveSyncWindow(body)
+    if (!syncWindow) return respond({ error: "invalid_sync_window" }, 400)
+    const { timeMin, timeMax } = syncWindow
 
     phase = "load_selected_calendars"
     const { data: selected, error: selectedError } = await admin.from("google_calendars")
@@ -72,16 +73,19 @@ Deno.serve(async req => {
     const selectedCalendars = (selected || []) as SelectedCalendar[]
 
     phase = "google_freebusy"
-    const busy = await googleJson<FreeBusyResponse>("https://www.googleapis.com/calendar/v3/freeBusy", token, {
-      method: "POST",
-      body: JSON.stringify({
-        timeMin: timeMin.toISOString(),
-        timeMax: timeMax.toISOString(),
-        items: selectedCalendars.map(row => ({ id: row.google_calendar_id })),
-      }),
-    })
+    const busyResponses: FreeBusyResponse[] = []
+    for (const window of chunkSyncWindow(timeMin, timeMax)) {
+      busyResponses.push(await googleJson<FreeBusyResponse>("https://www.googleapis.com/calendar/v3/freeBusy", token, {
+        method: "POST",
+        body: JSON.stringify({
+          timeMin: window.timeMin.toISOString(),
+          timeMax: window.timeMax.toISOString(),
+          items: selectedCalendars.map(row => ({ id: row.google_calendar_id })),
+        }),
+      }))
+    }
     const providerReasons = selectedCalendars.flatMap(calendar =>
-      (busy.calendars?.[calendar.google_calendar_id]?.errors || []).map(error => error.reason)
+      busyResponses.flatMap(busy => (busy.calendars?.[calendar.google_calendar_id]?.errors || []).map(error => error.reason))
         .filter((reason): reason is string => typeof reason === "string")
     )
     if (providerReasons.length) {
@@ -94,12 +98,12 @@ Deno.serve(async req => {
 
     phase = "normalize_busy_periods"
     const rows = selectedCalendars.flatMap(calendar =>
-      (busy.calendars?.[calendar.google_calendar_id]?.busy || []).map(period => {
+      busyResponses.flatMap(busy => (busy.calendars?.[calendar.google_calendar_id]?.busy || []).map(period => {
         const start = new Date(period.start)
         const end = new Date(period.end)
         if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) throw new Error("google_freebusy_invalid_interval")
         return { connection_id: connection.id, calendar_id: calendar.id, user_id: user.id, starts_at: start.toISOString(), ends_at: end.toISOString() }
-      })
+      }))
     )
 
     phase = "replace_busy_periods"
