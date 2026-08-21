@@ -2,6 +2,7 @@ export type CompanionIntent = {
   wantsPlanning: boolean
   wantsLecture: boolean
   wantsSyllabus: boolean
+  wantsRoadmap: boolean
   wantsNotes: boolean
   wantsDegree: boolean
 }
@@ -9,7 +10,10 @@ export type CompanionIntent = {
 /**
  * Detects which stored-context lookups a Companion message actually calls for. A bare
  * greeting or other small talk matches none of these, so the request-scoped fetches below
- * (assignments, exams, notes, degree audit, etc.) are skipped for it.
+ * (assignments, exams, notes, degree audit, etc.) are skipped for it. Note that none of
+ * these gate whether a *general-knowledge* question gets answered -- that's a system-prompt
+ * concern (see companionPrompt.ts's tier-1 handling), not a retrieval concern: a question can
+ * be answered from the model's own knowledge whether or not any of these match.
  */
 export function classifyCompanionIntent(message: string): CompanionIntent {
   const lower = message.toLowerCase()
@@ -23,6 +27,13 @@ export function classifyCompanionIntent(message: string): CompanionIntent {
         lower,
       ),
     wantsSyllabus: /syllabus|deadline|requirement|course info|grading/.test(lower),
+    // Course Roadmap entries are the syllabus-derived week/topic schedule for a course, so
+    // "what topics/what are we covering/what's on the schedule" questions need that source
+    // even though they don't mention "syllabus" by name.
+    wantsRoadmap:
+      /topic|covering|roadmap|course schedule|schedule of the course|week.?by.?week/.test(
+        lower,
+      ),
     wantsNotes:
       /note|summary|key concept|flashcard|practice question|study material|explain|quiz/.test(
         lower,

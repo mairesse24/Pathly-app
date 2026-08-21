@@ -21,7 +21,7 @@ const failure = {
   error: "companion_failed",
   message: "Pathly couldn't answer that right now. Try again.",
 }
-type SourceType = "assignment" | "exam" | "calendar" | "lecture" | "syllabus" | "course" | "reflection" | "note"
+type SourceType = "assignment" | "exam" | "calendar" | "lecture" | "syllabus" | "course" | "reflection" | "note" | "roadmap"
 type Source = { label: string; type: SourceType }
 
 function readNamedKey(name: string, legacyName: string) {
@@ -155,7 +155,7 @@ Deno.serve(async (req: Request) => {
     const requestId = userMessage.request_id
 
     const lower = message.toLowerCase()
-    const { wantsPlanning, wantsLecture, wantsSyllabus, wantsNotes, wantsDegree } =
+    const { wantsPlanning, wantsLecture, wantsSyllabus, wantsRoadmap, wantsNotes, wantsDegree } =
       classifyCompanionIntent(message)
     const sources: Source[] = []
     const context: string[] = []
@@ -342,11 +342,37 @@ Deno.serve(async (req: Request) => {
       }).filter((entry: any) => entry.score > 0).sort((a: any, b: any) => b.score - a.score).slice(0, 3)
       for (const entry of rankedNotes) add([entry.course?.course_code, entry.note.title].filter(Boolean).join(" — "), "note", entry.note.organized_content)
     }
-    if (wantsLecture || wantsSyllabus) {
+    if (wantsSyllabus || wantsRoadmap) {
+      // Course Roadmap entries are the syllabus-derived week/topic schedule, persisted
+      // separately from the raw processed document (see course_roadmap_entries migration).
+      // They're the authoritative, structured answer to "what topics/what are we covering"
+      // and were previously never fetched here at all, so Companion had nothing to cite even
+      // when a syllabus had been reviewed and its roadmap extracted.
+      const { data: roadmapEntries = [], error: roadmapError } = currentCourseIdList.length
+        ? await admin
+          .from("course_roadmap_entries")
+          .select("course_id,period_label,topic,description,deliverable,entry_date")
+          .eq("user_id", user.id)
+          .in("course_id", currentCourseIdList)
+          .order("sort_order")
+        : { data: [], error: null }
+      if (roadmapError) throw roadmapError
+      const roadmapByCourse = new Map<string, any[]>()
+      for (const entry of roadmapEntries || []) {
+        const list = roadmapByCourse.get(entry.course_id) || []
+        list.push(entry)
+        roadmapByCourse.set(entry.course_id, list)
+      }
+      for (const [courseId, entries] of roadmapByCourse) {
+        const course = courseById.get(courseId)
+        add([course?.course_code, "Course Roadmap"].filter(Boolean).join(" — "), "roadmap", entries)
+      }
+    }
+    if (wantsLecture || wantsSyllabus || wantsRoadmap) {
       const kinds =
-        wantsLecture && !wantsSyllabus
+        wantsLecture && !(wantsSyllabus || wantsRoadmap)
           ? ["lecture"]
-          : wantsSyllabus && !wantsLecture
+          : (wantsSyllabus || wantsRoadmap) && !wantsLecture
             ? ["syllabus"]
             : ["lecture", "syllabus"]
       const { data: results = [], error: resultsError } = currentCourseIdList.length
@@ -362,6 +388,12 @@ Deno.serve(async (req: Request) => {
         : { data: [], error: null }
       if (resultsError) throw resultsError
       const uploadIds = (results || []).map((item: any) => item.upload_id)
+      // `uploaded_files.processing_status` only ever reaches "ready_for_review" or,
+      // once the student reviews and approves it, "processed" -- "approved" is not a value
+      // this column ever takes (that's ai_processing_results.status, a different column on a
+      // different table). Filtering on "approved" here silently excluded every syllabus and
+      // lecture the student had actually reviewed and confirmed, which is exactly why
+      // Companion claimed it had no syllabus for a course whose syllabus was fully processed.
       const { data: uploads = [], error: uploadsError } = uploadIds.length
         ? await admin
           .from("uploaded_files")
@@ -369,7 +401,7 @@ Deno.serve(async (req: Request) => {
           .eq("user_id", user.id)
           .in("id", uploadIds)
           .in("category", kinds)
-          .in("processing_status", ["ready_for_review", "approved"])
+          .in("processing_status", ["ready_for_review", "processed"])
         : { data: [], error: null }
       if (uploadsError) throw uploadsError
       const uploadById = new Map(
