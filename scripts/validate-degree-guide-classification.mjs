@@ -169,6 +169,6 @@ assert.match(edgeFunctionSource, /program_guide:[^"]*courses must be an empty ar
 assert.match(edgeFunctionSource, /never invent or infer that a course is completed or in progress/, "the instruction must explicitly forbid inferring completion status for a program guide")
 assert.match(edgeFunctionSource, /TCCNS/, "the instruction must call out transfer/TCCNS equivalents as an extractable guide fact")
 assert.match(edgeFunctionSource, /recommended year\/semester/, "the instruction must call out recommended year/semester as an extractable guide fact")
-assert.match(edgeFunctionSource, /normalizeDegreeAuditResult\(JSON\.parse\(text\)\)/, "degree_audit results must be run through the normalization safety net before being saved")
+assert.match(edgeFunctionSource, /normalizeDegreeAuditResult\(structured\)/, "degree_audit results must be run through the normalization safety net before being saved")
 
 console.log("degree/transfer guide classification never carries personal completion status, and the personal-audit path is unaffected")
