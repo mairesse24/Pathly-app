@@ -81,7 +81,7 @@ Deno.serve(async (req: Request) => {
   const updateState = async (values: Record<string, unknown>) => {
     if (!uploadId) return
     const { error } = await admin.from("uploaded_files").update(values).eq("id", uploadId).eq("user_id", user.id)
-    if (error) console.error(JSON.stringify({ upload_id: uploadId, code: "processing_state_write_failed", message: error.message, details: error.details, hint: error.hint }))
+    if (error) console.error(JSON.stringify({ code: "processing_state_write_failed", message: error.message, details: error.details, hint: error.hint }))
   }
   try {
     const body = await req.json()
@@ -140,7 +140,7 @@ Deno.serve(async (req: Request) => {
       })
       const claude = await claudeResponse.json()
       if (!claudeResponse.ok) throw new Error(`Anthropic request failed (${claudeResponse.status}): ${claude?.error?.message || "Unknown API error"}`)
-      console.info(JSON.stringify({ upload_id: uploadId, event: "anthropic_response_shape", stage, ...anthropicResponseShape(claude) }))
+      console.info(JSON.stringify({ event: "anthropic_response_shape", stage, kind: upload.category, ...anthropicResponseShape(claude) }))
       if (claude.stop_reason === "max_tokens") throw new Error(`AI output was truncated at max_tokens during ${stage} before a complete structured response was returned.`)
       return extractAnthropicStructuredOutput(claude)
     }
@@ -165,7 +165,7 @@ Deno.serve(async (req: Request) => {
     return json({ processing, reused: false })
   } catch (reason) {
     const details = diagnostic(reason)
-    console.error(JSON.stringify({ upload_id: uploadId, user_id: user.id, ...details }))
+    console.error(JSON.stringify({ kind: upload?.category || "unknown", ...details }))
     await updateState({ processing_status: "processing_failed", processing_stage: null, processing_error_code: details.code, error_message: details.message })
     return json(genericFailure, 500)
   }

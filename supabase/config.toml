@@ -1,0 +1,38 @@
+[functions.process-academic-file]
+verify_jwt = true
+
+[functions.pathly-companion]
+verify_jwt = true
+
+[functions.organize-course-notes]
+verify_jwt = true
+
+[functions.delete-account]
+verify_jwt = true
+
+[functions.canvas-oauth-start]
+verify_jwt = true
+
+[functions.canvas-oauth-callback]
+verify_jwt = false
+
+[functions.canvas-token-connect]
+verify_jwt = true
+
+[functions.canvas-sync]
+verify_jwt = true
+
+[functions.canvas-disconnect]
+verify_jwt = true
+
+[functions.google-calendar-oauth-start]
+verify_jwt = true
+
+[functions.google-calendar-oauth-callback]
+verify_jwt = false
+
+[functions.google-calendar-sync]
+verify_jwt = true
+
+[functions.google-calendar-disconnect]
+verify_jwt = true
