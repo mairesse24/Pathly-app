@@ -20,6 +20,12 @@ import { useProfile } from "../../context/ProfileContext"
 import { buildComingUpItems } from "../../utils/comingUp"
 import { dateKey, dayGreeting, formatInstant, todayKey } from "../../utils/dateTime"
 import { buildSmartPlan } from "../../utils/smartPlanning"
+import { listBusyPeriods, type BusyPeriod } from "../../services/googleCalendar"
+import {
+  dismissScheduleConflict,
+  firstUndismissedConflict,
+  scheduleConflictEditPath,
+} from "../../utils/scheduleConflicts"
 export function DashboardPage() {
   const { profile } = useProfile()
   const timezone = profile?.timezone
@@ -47,6 +53,25 @@ export function DashboardPage() {
   } = useAcademicData()
 
   const navigate = useNavigate()
+  const [busyPeriods, setBusyPeriods] = useState<BusyPeriod[]>([])
+  const [dismissedConflicts, setDismissedConflicts] = useState<Set<string>>(() => new Set())
+
+  useEffect(() => {
+    const scheduled = studySessions.filter((session) => session.status === "scheduled")
+    if (!scheduled.length) {
+      setBusyPeriods([])
+      return
+    }
+    let active = true
+    const starts = scheduled.map((session) => new Date(session.start_at).getTime())
+    const ends = scheduled.map((session) => new Date(session.end_at).getTime())
+    const startsBefore = new Date(Math.max(...ends)).toISOString()
+    const endsAfter = new Date(Math.min(...starts)).toISOString()
+    listBusyPeriods(startsBefore, endsAfter)
+      .then((rows) => { if (active) setBusyPeriods(rows) })
+      .catch(() => { if (active) setBusyPeriods([]) })
+    return () => { active = false }
+  }, [studySessions])
 
   const comingUpItems = useMemo(
     () => buildComingUpItems({ assignments, exams, studySessions, courses, timezone }),
@@ -58,13 +83,15 @@ export function DashboardPage() {
       assignments,
       exams,
       studySessions,
+      busyPeriods,
       courses,
       reflection,
       preferences: profile,
       timeZone: timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
     }),
-    [assignments, courses, exams, profile, reflection, studySessions, timezone],
+    [assignments, busyPeriods, courses, exams, profile, reflection, studySessions, timezone],
   )
+  const visibleConflict = firstUndismissedConflict(plan.conflicts, dismissedConflicts)
 
   const nextExam = exams.find(
     (e) => e.exam_at && new Date(e.exam_at) >= new Date(),
@@ -185,13 +212,13 @@ export function DashboardPage() {
               ) : (
                 <p>No sessions scheduled today.</p>
               )}
-              {plan.conflicts.length > 0 && (
+              {visibleConflict && (
                 <div className="planning-warning" role="status">
                   <strong>Schedule conflict</strong>
-                  <p>{plan.conflicts[0].message}</p>
+                  <p>{visibleConflict.message}</p>
                   <div className="planning-actions">
-                    <Button variant="secondary" onClick={() => navigate("/calendar")}>Edit</Button>
-                    <Button variant="quiet">Ignore</Button>
+                    <Button variant="secondary" onClick={() => navigate(scheduleConflictEditPath(visibleConflict))}>Edit</Button>
+                    <Button variant="quiet" onClick={() => setDismissedConflicts((current) => dismissScheduleConflict(current, visibleConflict))}>Dismiss</Button>
                   </div>
                 </div>
               )}

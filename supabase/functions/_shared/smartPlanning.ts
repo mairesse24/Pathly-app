@@ -60,7 +60,19 @@ export type PlanningPriority = {
 export type PlanningConflict = {
   firstSessionId: string
   secondSessionId: string
+  source: "study_session" | "exam" | "google_calendar"
+  firstStartAt: string
+  firstEndAt: string
+  secondStartAt: string
+  secondEndAt: string
   message: string
+}
+
+export type PlanningBusyPeriod = {
+  id: string
+  starts_at: string
+  ends_at: string
+  source: "google_calendar"
 }
 
 export type SmartPlan = {
@@ -76,6 +88,7 @@ export type SmartPlanInput = {
   assignments: PlanningAssignment[]
   exams: PlanningExam[]
   studySessions: PlanningSession[]
+  busyPeriods?: PlanningBusyPeriod[]
   courses: PlanningCourse[]
   reflection?: PlanningReflection | null
   preferences?: PlanningPreferences | null
@@ -245,7 +258,12 @@ export function buildSmartPlan(input: SmartPlanInput): SmartPlan {
       conflicts.push({
         firstSessionId: scheduled[index].id,
         secondSessionId: scheduled[next].id,
-        message: "You already have something planned during this time.",
+        source: "study_session",
+        firstStartAt: scheduled[index].start_at,
+        firstEndAt: scheduled[index].end_at,
+        secondStartAt: scheduled[next].start_at,
+        secondEndAt: scheduled[next].end_at,
+        message: "This study session overlaps another Pathly study session.",
       })
     }
   }
@@ -259,7 +277,32 @@ export function buildSmartPlan(input: SmartPlanInput): SmartPlan {
         conflicts.push({
           firstSessionId: session.id,
           secondSessionId: exam.id,
-          message: "You already have something planned during this time.",
+          source: "exam",
+          firstStartAt: session.start_at,
+          firstEndAt: session.end_at,
+          secondStartAt: exam.exam_at,
+          secondEndAt: exam.exam_at,
+          message: "This study session overlaps an exam.",
+        })
+      }
+    }
+  }
+  for (const session of scheduled) {
+    const start = new Date(session.start_at).getTime()
+    const end = new Date(session.end_at).getTime()
+    for (const busy of input.busyPeriods ?? []) {
+      const busyStart = new Date(busy.starts_at).getTime()
+      const busyEnd = new Date(busy.ends_at).getTime()
+      if (busyStart < end && busyEnd > start) {
+        conflicts.push({
+          firstSessionId: session.id,
+          secondSessionId: busy.id,
+          source: "google_calendar",
+          firstStartAt: session.start_at,
+          firstEndAt: session.end_at,
+          secondStartAt: busy.starts_at,
+          secondEndAt: busy.ends_at,
+          message: "This study session overlaps busy time from Google Calendar.",
         })
       }
     }
