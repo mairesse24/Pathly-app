@@ -1,7 +1,12 @@
 {
-  "description": "Showcase sneakers with an interactive 360-degree view, size selection, and customer reviews, enhancing the shopping experience for sneaker enthusiasts.",
+  "title": "Pathly — Because students carry more than deadlines.",
+  "description": "Pathly is a student academic companion for organizing coursework, studying from course materials, planning schedules, and understanding academic progress.",
+  "language": "en",
+  "creator": "Mairesse Nkundizanye",
+  "tagline": "Because students carry more than deadlines.",
+  "url": "https://pathly-app-git-agent-product-polish-pathly6.vercel.app/",
   "robots": {
-    "index": false
+    "index": true
   },
   "accessibility": {
     "addBypassLinks": false,

@@ -45,6 +45,9 @@ export default defineConfig(({ mode }) => {
 type FigmaSiteConfiguration = {
   title?: string
   description?: string
+  creator?: string
+  tagline?: string
+  url?: string
   language?: string
   robots?: {
     index?: boolean
@@ -81,8 +84,11 @@ function figmaSiteConfiguration(config: FigmaSiteConfiguration): Plugin {
     return html.replace(`<!-- ${slotName} -->`, content)
   }
 
-  const title = config.title ?? "Figma Make App"
+  const title = config.title ?? 'Pathly'
   const description = config.description ?? ''
+  const creator = config.creator ?? ''
+  const tagline = config.tagline ?? ''
+  const publicUrl = config.url ?? ''
   const favicon = config.icons?.icon ?? ''
   const socialImage = config.openGraph?.image ?? ''
   const language = sanitizeHtmlValue(config.language) || 'en'
@@ -91,7 +97,7 @@ function figmaSiteConfiguration(config: FigmaSiteConfiguration): Plugin {
   const headEnd = config.customScripts?.headEnd ?? ''
   const bodyStart = config.customScripts?.bodyStart ?? ''
   const bodyEnd = config.customScripts?.bodyEnd ?? ''
-  const robotsTxt = config.robots?.index === false ? 'User-agent: *\nDisallow: /\n' : ''
+  const robotsTxt = config.robots?.index === false ? 'User-agent: *\nDisallow: /\n' : 'User-agent: *\nAllow: /\n'
 
   return {
     name: 'figma-site-configuration',
@@ -116,33 +122,45 @@ function figmaSiteConfiguration(config: FigmaSiteConfiguration): Plugin {
       order: 'pre',
       handler(html) {
         let result = html
-        result = replaceHtmlCommentSlot(result, 'figma:lang', language)
-        result = replaceHtmlCommentSlot(result, 'figma:title', escapeHtmlText(title))
-        result = replaceHtmlCommentSlot(result, 'figma:head-start', headStart)
-        result = replaceHtmlCommentSlot(result, 'figma:head-end', headEnd)
-        result = replaceHtmlCommentSlot(result, 'figma:body-start', bodyStart)
-        result = replaceHtmlCommentSlot(result, 'figma:body-end', bodyEnd)
+        result = replaceHtmlCommentSlot(result, 'pathly:lang', language)
+        result = replaceHtmlCommentSlot(result, 'pathly:title', escapeHtmlText(title))
+        result = replaceHtmlCommentSlot(result, 'pathly:head-start', headStart)
+        result = replaceHtmlCommentSlot(result, 'pathly:head-end', headEnd)
+        result = replaceHtmlCommentSlot(result, 'pathly:body-start', bodyStart)
+        result = replaceHtmlCommentSlot(result, 'pathly:body-end', bodyEnd)
 
         const tags: HtmlTagDescriptor[] = []
         if (description) {
           tags.push({ tag: 'meta', attrs: { name: 'description', content: description }, injectTo: 'head' })
         }
-        if (config.robots?.index === false) {
-          tags.push({ tag: 'meta', attrs: { name: 'robots', content: 'noindex, nofollow' }, injectTo: 'head' })
-        }
+        tags.push({ tag: 'meta', attrs: { name: 'robots', content: config.robots?.index === false ? 'noindex, nofollow' : 'index, follow' }, injectTo: 'head' })
+        if (creator) tags.push({ tag: 'meta', attrs: { name: 'author', content: creator }, injectTo: 'head' })
+        if (publicUrl) tags.push({ tag: 'link', attrs: { rel: 'canonical', href: publicUrl }, injectTo: 'head' })
         if (favicon) {
           tags.push({ tag: 'link', attrs: { rel: 'icon', href: favicon }, injectTo: 'head' })
         }
         if (title) {
-          tags.push({ tag: 'meta', attrs: { property: 'og:title', content: title }, injectTo: 'head' })
+          tags.push(
+            { tag: 'meta', attrs: { property: 'og:title', content: title }, injectTo: 'head' },
+            { tag: 'meta', attrs: { name: 'twitter:title', content: title }, injectTo: 'head' },
+          )
         }
         if (description) {
-          tags.push({ tag: 'meta', attrs: { property: 'og:description', content: description }, injectTo: 'head' })
+          tags.push(
+            { tag: 'meta', attrs: { property: 'og:description', content: description }, injectTo: 'head' },
+            { tag: 'meta', attrs: { name: 'twitter:description', content: description }, injectTo: 'head' },
+          )
         }
+        tags.push(
+          { tag: 'meta', attrs: { property: 'og:type', content: 'website' }, injectTo: 'head' },
+          { tag: 'meta', attrs: { property: 'og:site_name', content: 'Pathly' }, injectTo: 'head' },
+          { tag: 'meta', attrs: { name: 'twitter:card', content: socialImage ? 'summary_large_image' : 'summary' }, injectTo: 'head' },
+        )
+        if (publicUrl) tags.push({ tag: 'meta', attrs: { property: 'og:url', content: publicUrl }, injectTo: 'head' })
+        if (tagline) tags.push({ tag: 'meta', attrs: { name: 'application-name', content: 'Pathly' }, injectTo: 'head' })
         if (socialImage) {
           tags.push(
             { tag: 'meta', attrs: { property: 'og:image', content: socialImage }, injectTo: 'head' },
-            { tag: 'meta', attrs: { name: 'twitter:card', content: 'summary_large_image' }, injectTo: 'head' },
             { tag: 'meta', attrs: { name: 'twitter:image', content: socialImage }, injectTo: 'head' },
           )
         }

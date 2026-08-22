@@ -1,6 +1,6 @@
 import type { CalendarItem, ChatMessage, CourseSummary, FocusTask, StudyMaterial } from "../types/app";
 
-export const demoStudent = { name: "Mairesse N.", firstName: "Mairesse", university: "University of North Texas", major: "Computer Science", graduationYear: 2027 };
+export const demoStudent = { name: "Mairesse Nkundizanye", firstName: "Mairesse", university: "University of North Texas", major: "Computer Science", graduationYear: 2027 };
 export const focusTasks: FocusTask[] = [
   { id:"csce-1030-assignment", title:"CSCE 1030 — Programming Assignment 4", detail:"Finish input validation and test cases", duration:"90 min" },
   { id:"csce-3201-review", title:"CSCE 3201 — Review neural network concepts", detail:"Lecture 6 summary + flashcards", duration:"45 min" },
