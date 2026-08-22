@@ -28,9 +28,9 @@ export function LandingPage() {
       <header className="landing-nav">
         <Brand />
         <div>
-          <button className="landing-link">About Pathly</button>
+          <a className="landing-link" href="#about-pathly">About Pathly</a>
           <Button onClick={() => navigate("/auth")}>
-            Get started <Icon name="arrow" size={16} />
+            Try Pathly <Icon name="arrow" size={16} />
           </Button>
         </div>
       </header>
@@ -48,19 +48,17 @@ export function LandingPage() {
           </p>
           <div className="hero-actions">
             <Button onClick={() => navigate("/auth")}>
-              Get started <Icon name="arrow" size={16} />
+              Try Pathly <Icon name="arrow" size={16} />
             </Button>
-            {DEMO_VIDEO_URL && (
-              <a
-                className="btn btn-secondary"
-                href={DEMO_VIDEO_URL}
-                target="_blank"
-                rel="noreferrer noopener"
-                aria-label="Watch the 2-minute Pathly demo video (opens in a new tab)"
-              >
-                <Icon name="play" size={16} /> Watch 2-minute demo
-              </a>
-            )}
+            <a
+              className="btn btn-secondary"
+              href={DEMO_VIDEO_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Watch the 2-minute Pathly demo video (opens in a new tab)"
+            >
+              <Icon name="play" size={16} /> Watch 2-Minute Demo
+            </a>
           </div>
           <div className="hero-preview" aria-label="Example of a Pathly day view">
             <div className="preview-copy">
@@ -92,7 +90,7 @@ export function LandingPage() {
             </div>
           </div>
         </section>
-        <section className="landing-features">
+        <section className="landing-features" id="about-pathly">
           <p className="eyebrow">A calmer way through college</p>
           <h2>Everything in one calm space.</h2>
           <div>
