@@ -24,6 +24,7 @@ import {
   deleteUpload,
   formatBytes,
   listUploads,
+  UploadDeletionError,
   uploadSourceFile,
   USER_QUOTA_BYTES,
   validateUpload,
@@ -314,9 +315,16 @@ export function UploadCenterPage() {
       setState("success")
       setMessage("File deleted and storage space reclaimed.")
     } catch (reason) {
+      // The active-upload view requires both metadata and a live Storage object.
+      // Reload it even after a partial failure so an already-removed source is not
+      // left presented as downloadable in this mounted screen.
+      const refreshed = await listUploads().catch(() => null)
+      if (refreshed) setFiles(refreshed)
       setState("error")
       setMessage(
-        reason instanceof Error ? reason.message : "Unable to delete the file.",
+        reason instanceof UploadDeletionError || reason instanceof Error
+          ? reason.message
+          : "Unable to delete the file.",
       )
     }
   }

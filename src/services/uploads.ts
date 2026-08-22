@@ -6,6 +6,16 @@ export const SOURCE_BUCKET = "source-uploads"
 export const MAX_FILE_BYTES = 25 * 1024 * 1024
 export const USER_QUOTA_BYTES = 500 * 1024 * 1024
 
+export class UploadDeletionError extends Error {
+  storageRemoved: boolean
+
+  constructor(message: string, storageRemoved: boolean) {
+    super(message)
+    this.name = "UploadDeletionError"
+    this.storageRemoved = storageRemoved
+  }
+}
+
 const MIME_BY_EXTENSION: Record<string, string> = {
   pdf: "application/pdf",
   pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
@@ -80,18 +90,31 @@ export async function uploadSourceFile(input: {
 }
 
 export async function deleteUpload(row: UploadedFileRecord) {
+  const { data: { user }, error: userError } = await supabase.auth.getUser()
+  if (userError || !user) throw new UploadDeletionError("Your session is no longer valid. Sign in and try again.", false)
+  if (row.user_id !== user.id || !row.storage_path.startsWith(`${user.id}/`)) {
+    throw new UploadDeletionError("Pathly cannot delete a file that does not belong to your account.", false)
+  }
   const { error: storageError } = await supabase.storage
     .from(SOURCE_BUCKET)
     .remove([row.storage_path])
-  if (storageError) throw storageError
+  if (storageError) {
+    throw new UploadDeletionError("The source file could not be removed. Nothing else was deleted; please try again.", false)
+  }
   const { data, error } = await supabase
     .from("uploaded_files")
     .delete()
     .eq("id", row.id)
+    .eq("user_id", user.id)
     .select("id")
     .maybeSingle()
-  if (error) throw error
-  if (!data) throw new Error("The file metadata could not be deleted. Refresh and try again.")
+  if (error) {
+    throw new UploadDeletionError("The source file was removed, but Pathly could not finish cleaning up its file record. Refresh and retry the deletion.", true)
+  }
+
+  // A missing row is already the desired final state. This also makes a retry safe
+  // after Storage succeeded but a prior response was interrupted.
+  return data?.id ?? row.id
 }
 
 export async function reassociateSyllabusCourse(processingId: string, courseId: string) {
