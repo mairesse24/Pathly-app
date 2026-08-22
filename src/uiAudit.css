@@ -1,0 +1,44 @@
+/* Theme-boundary fixes for intentionally tinted surfaces.
+   Keep these scoped: the surfaces stay light in the default theme and become
+   palette-native only when the surrounding application is dark. */
+:root[data-theme="dark"] .academic-disclaimer,
+:root[data-theme="dark"] .degree-empty-state,
+:root[data-theme="dark"] .privacy-notice {
+  background: var(--surface);
+  color: var(--muted) !important;
+}
+
+:root[data-theme="dark"] .degree-empty-state .eyebrow {
+  color: var(--green);
+}
+
+:root[data-theme="dark"] .calendar-overdue-banner,
+:root[data-theme="dark"] .course-mismatch,
+:root[data-theme="dark"] .course-unknown,
+:root[data-theme="dark"] .requirement-review {
+  background: #3f382a;
+  border-color: var(--gold);
+  color: var(--ink);
+}
+
+:root[data-theme="dark"] .calendar-save-banner,
+:root[data-theme="dark"] .course-match-note,
+:root[data-theme="dark"] .audit-application-list li,
+:root[data-theme="dark"] .requirement-confirmation {
+  background: var(--sage);
+  color: var(--ink) !important;
+}
+
+:root[data-theme="dark"] .day.today .calendar-day-button {
+  color: #172019;
+}
+
+:root[data-theme="dark"] .badge-gold,
+:root[data-theme="dark"] .badge-rose,
+:root[data-theme="dark"] .focus-number {
+  color: var(--ink);
+}
+
+:root[data-theme="dark"] .focus-number {
+  background: var(--sage);
+}
