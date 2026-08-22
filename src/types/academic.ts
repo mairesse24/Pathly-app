@@ -62,6 +62,7 @@ export type CourseRoadmapEntryRecord = {
   entry_date: string | null
   source: string
   sort_order: number
+  roadmap_item_key?: string | null
 }
 export type StudySessionRecord = {
   id: string

@@ -97,3 +97,18 @@ test("a Canvas-sourced assignment is flagged canvasOwned; a syllabus-sourced one
   assert.equal(events.find((entry) => entry.id === "a-canvas")?.canvasOwned, true)
   assert.equal(events.find((entry) => entry.id === "a-syllabus")?.canvasOwned, false)
 })
+
+test("future-week assignments, exams, and study sessions remain available when the window moves", () => {
+  const futureDays = weekKeys(timezone, new Date("2026-12-29T18:00:00.000Z"))
+  const events = buildCalendarEvents({
+    assignments: [{ id: "future-assignment", course_id: "csce-3600", title: "Year-end project", due_at: "2026-12-31T18:00:00.000Z", status: "not_started", source: "manual" }],
+    exams: [{ id: "future-exam", course_id: "csce-4350", title: "Final", exam_at: "2027-01-02T16:00:00.000Z" }],
+    studySessions: [{ id: "future-session", course_id: "csce-3600", title: "Project review", start_at: "2027-01-01T20:00:00.000Z" }],
+    courses,
+    days: futureDays,
+    today,
+    timezone,
+  })
+  assert.deepEqual(events.map(event => event.id), ["future-assignment", "future-exam", "future-session"])
+  assert.ok(events.every(event => event.day >= 0), "every future-week event must land in the selected display window")
+})

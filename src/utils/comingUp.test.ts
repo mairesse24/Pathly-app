@@ -152,6 +152,13 @@ test("a near study session beats a much later exam", () => {
   assert.deepEqual(items.map((entry) => entry.id), ["s-near", "e-far"])
 })
 
+test("course roadmap context never enters commitment-focused Coming Up", () => {
+  const roadmapEntries = [{ id: "roadmap", course_id: "c-active", topic: "Threads", entry_date: "2026-08-20" }]
+  const items = buildComingUpItems({ assignments: [], exams: [], studySessions: [], courses, timezone, now })
+  assert.equal(roadmapEntries.length, 1, "fixture confirms roadmap context exists independently")
+  assert.deepEqual(items, [], "Coming Up accepts only assignments, exams, and study sessions")
+})
+
 // After syllabus reconciliation, roadmap topics and conflicting proposed
 // dates are absent from the active assignment/exam arrays. Coming Up must
 // rank the nearest remaining real commitments across kinds.
