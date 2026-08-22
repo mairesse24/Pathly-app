@@ -70,6 +70,17 @@ export async function removeAllImportedCoursework() {
   if (error) throw error
   return data as ImportedCourseworkRemoval
 }
+export type DegreeAuditCourseworkRemoval = {
+  courses_removed: number
+  personal_audit_plans_removed: number
+  requirement_groups_removed: number
+  requirements_removed: number
+}
+export async function removeDegreeAuditCoursework() {
+  const { data, error } = await supabase.rpc("remove_degree_audit_coursework")
+  if (error) throw error
+  return data as DegreeAuditCourseworkRemoval
+}
 export type DegreeAuditUploadState = Pick<UploadedFileRecord, "id" | "processing_status" | "processing_error_code" | "created_at">
 export async function getLatestDegreeAuditUploadState() {
   const { data, error } = await supabase.from("uploaded_files")
