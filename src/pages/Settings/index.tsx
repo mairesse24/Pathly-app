@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react"
-import { useNavigate } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import { PageHeader } from "../../components/layout/PageHeader"
 import { GoogleCalendarConnectionCard } from "../../components/settings/GoogleCalendarConnectionCard"
 import { AcademicDetailsFields } from "../../components/profile/AcademicDetailsFields"
@@ -334,6 +334,7 @@ export function SettingsPage() {
             Deleting a file reclaims its space.
           </p>
         </Card>
+        <Card><p className="eyebrow">Policies and guidance</p><h3>Understand how Pathly handles your information</h3><p>Pathly supports academic organization; it does not replace official university records or an academic advisor. Review AI-generated summaries and extracted dates before relying on them.</p><div className="form-actions legal-links"><Link to="/privacy">Privacy Policy</Link><Link to="/terms">Terms of Use</Link></div></Card>
 
         <Card className="danger-zone">
           <p className="eyebrow">Account</p>

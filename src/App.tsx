@@ -34,6 +34,9 @@ import { CourseDetailPage } from "./pages/CourseDetail"
 import { AcademicDataProvider } from "./context/AcademicDataContext"
 import { ProfileProvider } from "./context/ProfileContext"
 import { ThemeProvider } from "./context/ThemeContext"
+import { AboutPage, PrivacyPage, TermsPage } from "./pages/Legal"
+import { PublicFooter } from "./components/layout/PublicFooter"
+import "./publicInfo.css"
 
 export default function App() {
   return (
@@ -45,7 +48,10 @@ export default function App() {
           <AcademicDataProvider>
             <Routes>
               <Route path="/" element={<LandingPage />} />
-              <Route path="/auth" element={<AuthPage />} />
+              <Route path="/auth" element={<div className="auth-public-shell"><AuthPage /><PublicFooter /></div>} />
+              <Route path="/privacy" element={<PrivacyPage />} />
+              <Route path="/terms" element={<TermsPage />} />
+              <Route path="/about" element={<AboutPage />} />
               <Route element={<ProtectedRoute />}>
                 <Route path="/onboarding" element={<OnboardingPage />} />
                 <Route element={<OnboardingRoute />}>
