@@ -56,7 +56,7 @@ export function AboutPage() {
   return <PublicPage title="Because students carry more than deadlines.">
     <p>Pathly is a calm environment for organizing coursework, understanding upcoming commitments, summarizing study material, reflecting on how the day is going, and seeing an academic path more clearly.</p>
     <p>It brings day-to-day planning and the bigger degree picture together while keeping the student in control: imported and AI-extracted academic information is reviewed before it becomes part of the student&apos;s records.</p>
-    <h2>Built with students in mind</h2><p>Pathly was created by Mairesse N. as a student-built project. It is an independent product and is not an official product of, or endorsed by, any university or third-party platform.</p>
+    <h2>Built with students in mind</h2><p>Pathly was created by Mairesse Nkundizanye as a student-built project. It is an independent product and is not an official product of, or endorsed by, any university or third-party platform.</p>
     <p><a href={repositoryUrl} target="_blank" rel="noopener noreferrer">View Pathly on GitHub</a></p>
   </PublicPage>
 }

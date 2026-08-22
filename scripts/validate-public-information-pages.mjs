@@ -15,7 +15,7 @@ for (const route of ["/privacy", "/terms", "/about"]) {
   assert.match(app, publicRoute, `${route} must be a direct public route outside ProtectedRoute`)
   assert.ok(app.indexOf(`path="${route}"`) < app.indexOf("<Route element={<ProtectedRoute />}>") , `${route} must not require authentication`)
 }
-for (const label of ["Privacy", "Terms", "About Pathly", "GitHub", "© 2026 Pathly", "Built by Mairesse N."]) assert.match(footer, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")))
+for (const label of ["Privacy", "Terms", "About Pathly", "GitHub", "© 2026 Pathly", "Built by Mairesse Nkundizanye"]) assert.match(footer, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")))
 assert.match(landing, /<PublicFooter \/>/, "Landing must show the public footer")
 assert.match(app, /<AuthPage \/><PublicFooter \/>/, "Auth must show the public footer")
 assert.match(settings, /to="\/privacy"[\s\S]{0,100}to="\/terms"/, "authenticated Settings must expose legal links")

@@ -107,7 +107,7 @@ export function LandingPage() {
           <div className="landing-about-copy">
             <h2>Built for the full student life.</h2>
             <p>Pathly helps students organize coursework, understand upcoming commitments, summarize study material, reflect, and see their academic path more clearly—without pretending a student is only a list of deadlines.</p>
-            <p>Created by Mairesse N. as an independent student-built project.</p>
+            <p>Created by Mairesse Nkundizanye as an independent student-built project.</p>
           </div>
         </section>
       </main>
