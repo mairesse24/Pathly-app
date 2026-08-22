@@ -294,6 +294,34 @@ test("system prompt gives a credits-remaining-anchored, priority-ordered plan fo
   assert.match(system, /CSCE Option Courses/)
 })
 
+// Regression coverage for: Pathly correctly refused to invent prerequisites/offerings, but
+// asked for more information too early -- before showing what it already knew or could help
+// with. The two prior tests above cover the *content* each stage must produce for both real
+// example questions ("Help me plan next semester" and "I want to graduate in 2028. What
+// should I take next semester?"); this test covers the *structure* itself, asserting the
+// named Know -> Help -> Identify uncertainty -> Ask order is explicit and appears in that
+// order in the rendered prompt, and that asking is explicitly forbidden as the first move.
+test("system prompt states the Know, Help, Identify uncertainty, Ask order explicitly and forbids asking first", () => {
+  const system = buildCompanionSystemPrompt({
+    localToday: "2026-08-20",
+    timeZone: "America/Chicago",
+    allowedLabels: [],
+    context: [],
+  })
+
+  assert.match(system, /follow this order and never invert it: Know, then Help, then Identify uncertainty, then Ask/)
+  assert.match(system, /Do not skip straight to Ask -- asking for more information before Know and Help have run/)
+  assert.match(system, /^Know: /m)
+  assert.match(system, /^Help: /m)
+  assert.match(system, /^Identify uncertainty: /m)
+  assert.match(system, /^Ask: only now, after Know, Help, and Identify uncertainty have already given the student something useful/m)
+
+  // The four stage labels must appear in this exact order, not just be present somewhere.
+  const order = ["Know:", "Help:", "Identify uncertainty:", "Ask:"].map((label) => system.indexOf(label))
+  assert.ok(order.every((index) => index !== -1), "all four stage labels must be present")
+  assert.deepEqual(order, [...order].sort((a, b) => a - b), "stages must appear in Know, Help, Identify uncertainty, Ask order")
+})
+
 test("system prompt still tells the model to use stored context once it is relevant, and keeps the data available", () => {
   const system = buildCompanionSystemPrompt({
     localToday: "2026-08-20",
