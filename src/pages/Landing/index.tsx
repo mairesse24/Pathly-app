@@ -5,6 +5,7 @@ import { Button } from "../../components/ui/Button"
 import { Card } from "../../components/ui/Card"
 import { Icon } from "../../components/ui/Icon"
 import { DEMO_VIDEO_URL } from "../../constants/demo"
+import "./landing.css"
 
 const benefits = [
   {
