@@ -12,9 +12,10 @@ import { createExam, deleteExam, updateExam } from "../../services/exams"
 import { createStudySession, deleteStudySession, updateStudySession } from "../../services/studySessions"
 import { listCourseRoadmap, roadmapSessionTitle } from "../../services/courseRoadmap"
 import type { AssignmentRecord, CourseRoadmapEntryRecord, ExamRecord, StudySessionRecord } from "../../types/academic"
-import { assignmentEventStatus, calendarEventTitle, classMeetingStatus, examEventStatus } from "../../utils/calendarEventPresentation"
+import { classMeetingStatus } from "../../utils/calendarEventPresentation"
 import { classifySavedDate } from "../../utils/calendarSaveOutcome"
-import { dateKey, formatDateKey, formatInstant, todayKey, validTimeZone, weekKeys, zonedDateTimeToIso } from "../../utils/dateTime"
+import { buildCalendarEvents } from "../../utils/calendarEvents"
+import { dateKey, formatDateKey, todayKey, validTimeZone, weekKeys, zonedDateTimeToIso } from "../../utils/dateTime"
 
 type Kind="assignment"|"exam"|"session"
 type EventStatus="completed"|"overdue"|"upcoming"
@@ -39,13 +40,11 @@ export function CalendarPage(){
  const [confirmation,setConfirmation]=useState<ConfirmationState|null>(null)
  const [kind,setKind]=useState<Kind>("assignment"),[courseId,setCourseId]=useState(""),[title,setTitle]=useState(""),[date,setDate]=useState(today),[time,setTime]=useState(defaultTime),[endTime,setEndTime]=useState("13:00"),[saving,setSaving]=useState(false),[message,setMessage]=useState("")
  const [sessionRoadmap,setSessionRoadmap]=useState<CourseRoadmapEntryRecord[]>([]); const [sessionTopicId,setSessionTopicId]=useState("")
- const course=(id:string|null)=>courses.find(c=>c.id===id)?.course_code??"Course"; const eventTime=(v:string)=>formatInstant(v,timezone,{hour:"numeric",minute:"2-digit"}); const dayIndex=(iso:string)=>days.indexOf(dateKey(iso,timezone))
- const assignmentStatus=(a:AssignmentRecord):EventStatus=>assignmentEventStatus(a.status,a.due_at?dateKey(a.due_at,timezone):null,today)
- const events=useMemo<CalendarEvent[]>(()=>[
-  ...assignments.filter(a=>a.due_at).map(a=>{const status=assignmentStatus(a);return {id:a.id,kind:"assignment" as Kind,day:dayIndex(a.due_at!),title:calendarEventTitle(course(a.course_id),a.title),time:eventTime(a.due_at!),tone:status==="completed"?"done":status==="overdue"?"rose":"gold",record:a,canvasOwned:a.source==="canvas",eventStatus:status}}),
-  ...exams.filter(e=>e.exam_at).map(e=>{const past=examEventStatus(dateKey(e.exam_at!,timezone),today)==="past";return {id:e.id,kind:"exam" as Kind,day:dayIndex(e.exam_at!),title:calendarEventTitle(course(e.course_id),e.title),time:eventTime(e.exam_at!),tone:past?"history":"rose",record:e}}),
-  ...studySessions.map(s=>({id:s.id,kind:"session" as Kind,day:dayIndex(s.start_at),title:s.title,time:eventTime(s.start_at),tone:"sage",record:s})),
- ],[assignments,exams,studySessions,courses,days.join("|"),today,timezone])
+ const course=(id:string|null)=>courses.find(c=>c.id===id)?.course_code??"Course"
+ // What actually lands on the main commitment Calendar (never roadmap topics/lectures/
+ // holidays, which are never turned into assignment/exam rows in the first place) is a plain,
+ // testable function -- see src/utils/calendarEvents.ts and its regression tests.
+ const events=useMemo<CalendarEvent[]>(()=>buildCalendarEvents({assignments,exams,studySessions,courses,days,today,timezone}),[assignments,exams,studySessions,courses,days.join("|"),today,timezone])
  const overdueAssignments=useMemo(()=>assignments.filter(a=>a.due_at&&a.status!=="completed"&&dateKey(a.due_at,timezone)<today).sort((a,b)=>(a.due_at as string).localeCompare(b.due_at as string)),[assignments,timezone,today])
  useEffect(()=>{const id=params.get("item"),type=params.get("type");if(!id||!type)return;const event=events.find(item=>item.id===id&&item.kind===(type==="session"?"session":type));if(event)openExisting(event)},[events,params])
  useEffect(()=>{if(!confirmation)return;const timer=setTimeout(()=>setConfirmation(null),6000);return()=>clearTimeout(timer)},[confirmation])

@@ -3,17 +3,22 @@ import { readFileSync } from "node:fs"
 
 const calendar = readFileSync(new URL("../src/pages/Calendar/index.tsx", import.meta.url), "utf8")
 const courseDetail = readFileSync(new URL("../src/pages/CourseDetail/index.tsx", import.meta.url), "utf8")
+// The events list (assignment/exam/session tone and day computation) was extracted out of
+// Calendar/index.tsx into this plain, independently-tested function -- see
+// src/utils/calendarEvents.ts and calendarEvents.test.ts. Calendar must still delegate to it.
+const calendarEvents = readFileSync(new URL("../src/utils/calendarEvents.ts", import.meta.url), "utf8")
+assert.match(calendar, /buildCalendarEvents\(\{assignments,exams,studySessions,courses,days,today,timezone\}\)/, "Calendar must build its events list via buildCalendarEvents, not inline logic")
 
 // Class meetings and exams must use the real past/upcoming helpers, not a
 // literal always-blue/always-rose tone, so a past week's meetings and exams
 // actually get muted instead of looking identical to future ones.
 assert.match(calendar, /classMeetingStatus\(days\[day\],\s*today\)/, "meeting tone must be computed from classMeetingStatus, not a fixed tone")
-assert.match(calendar, /examEventStatus\(dateKey\(e\.exam_at!,\s*timezone\),\s*today\)/, "exam tone must be computed from examEventStatus, not a fixed tone")
+assert.match(calendarEvents, /examEventStatus\(dateKey\(examAt,\s*input\.timezone\),\s*input\.today\)/, "exam tone must be computed from examEventStatus, not a fixed tone")
 
 // Study sessions must never receive an assignment-shaped eventStatus --
 // that's the only thing that renders the "✓ Completed"/"Overdue" text, and
 // a session is neither.
-const sessionMapping = calendar.match(/\.\.\.studySessions\.map\(s=>\(\{[^}]*\}\)\)/)
+const sessionMapping = calendarEvents.match(/input\.studySessions\.map\(\(session\) => \(\{[\s\S]*?\}\)\)/)
 assert.ok(sessionMapping, "studySessions mapping must exist in the events list")
 assert.doesNotMatch(sessionMapping[0], /eventStatus/, "a study session must never carry an eventStatus (no Completed/Overdue text)")
 

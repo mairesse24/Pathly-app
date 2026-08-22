@@ -38,6 +38,25 @@ function activeScoped() {
   }
 }
 
+// Regression coverage for the syllabus extraction -> review -> approval RPC ->
+// assignments/exams tables -> Today/Coming Up trace: buildComingUpItems is source-agnostic by
+// design (ComingUpAssignment has no source field at all), but this makes that explicit with the
+// exact shape approve_syllabus_processing actually writes (source:"syllabus:<upload_id>"), so a
+// future change can't accidentally special-case "manual" without this test catching it.
+test("an approved dated syllabus assignment appears in Coming up, same as a manual one", () => {
+  const items = buildComingUpItems({
+    assignments: [{ id: "a-syllabus", course_id: "c-active", title: "Programming Assignment 1", due_at: "2026-08-25T23:00:00.000Z", status: "not_started", source: "syllabus:9198bd58-a576-4763-a5a7-a1da904c4043" }],
+    exams: [],
+    studySessions: [],
+    courses,
+    timezone,
+    now,
+  })
+  const item = items.find((entry) => entry.id === "a-syllabus")
+  assert.ok(item, "an approved syllabus-sourced assignment must appear in Coming up")
+  assert.equal(item?.courseCode, "CSCE 3600")
+})
+
 test("A: upcoming assignment appears in Coming up", () => {
   const scoped = activeScoped()
   const items = buildComingUpItems({ ...scoped, timezone, now })
@@ -133,32 +152,27 @@ test("a near study session beats a much later exam", () => {
   assert.deepEqual(items.map((entry) => entry.id), ["s-near", "e-far"])
 })
 
-// Mirrors the real reported bug shape: a course with several dated exams
-// months out (CSCE 3600.004's exam schedule) plus a second course's exam,
-// alongside a handful of near-term assignments due within days. The
-// near-term assignments must not be crowded out or out-ranked just
-// because there happen to be multiple exams later in the term.
-test("multiple later exams across courses do not crowd out closer assignments", () => {
+// After syllabus reconciliation, roadmap topics and conflicting proposed
+// dates are absent from the active assignment/exam arrays. Coming Up must
+// rank the nearest remaining real commitments across kinds.
+test("Coming Up ranks the nearest valid commitments after syllabus reconciliation", () => {
   const items = buildComingUpItems({
     assignments: [
-      { id: "a-aug19", course_id: "c-active", title: "System Programming Overview", due_at: "2026-08-19T23:00:00.000Z", status: "not_started" },
-      { id: "a-aug21", course_id: "c-active", title: "SED", due_at: "2026-08-21T23:35:00.000Z", status: "not_started" },
-      { id: "a-aug26", course_id: "c-active", title: "SED Practice", due_at: "2026-08-26T23:36:00.000Z", status: "not_started" },
+      { id: "a-real", course_id: "c-active", title: "Programming Assignment 1", due_at: "2026-08-25T23:00:00.000Z", status: "not_started" },
     ],
     exams: [
       { id: "e-sep23", course_id: "c-active", title: "EXAM I", exam_at: "2026-09-23T20:25:00.000Z" },
       { id: "e-oct8", course_id: "c-active", title: "Midterm Exam", exam_at: "2026-10-08T13:50:00.000Z" },
       { id: "e-oct21", course_id: "c-active", title: "EXAM II", exam_at: "2026-10-21T20:25:00.000Z" },
-      { id: "e-nov2", course_id: "c-active", title: "EXAM I", exam_at: "2026-11-02T23:37:00.000Z" },
     ],
-    studySessions: [],
+    studySessions: [{ id: "s-nearest", course_id: "c-active", title: "Exam review", start_at: "2026-08-22T20:00:00.000Z", status: "scheduled" }],
     courses,
     timezone,
     now,
   })
   assert.deepEqual(
-    items.slice(0, 5).map((entry) => entry.id),
-    ["a-aug19", "a-aug21", "a-aug26", "e-sep23", "e-oct8"],
-    "the three near-term August assignments must rank ahead of every later exam",
+    items.map((entry) => entry.id),
+    ["s-nearest", "a-real", "e-sep23", "e-oct8", "e-oct21"],
+    "only valid active commitments should remain, ordered by their actual dates",
   )
 })

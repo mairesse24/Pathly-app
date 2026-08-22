@@ -14,7 +14,7 @@ export type ComingUpItem = {
 // CourseRecord -- only what this function reads. The full records already
 // satisfy these (extra properties are fine), and tests don't need to pad
 // fixtures with unrelated required fields.
-type ComingUpAssignment = { id: string; course_id: string; title: string; due_at: string | null; status: string }
+type ComingUpAssignment = { id: string; course_id: string; title: string; due_at: string | null; status: string; source?: string }
 type ComingUpExam = { id: string; course_id: string; title: string; exam_at: string | null }
 type ComingUpSession = { id: string; course_id: string | null; title: string; start_at: string; status: string }
 type ComingUpCourse = { id: string; course_code: string }
