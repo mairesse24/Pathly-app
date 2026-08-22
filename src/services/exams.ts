@@ -17,3 +17,5 @@ export async function createExam(value: Omit<ExamRecord, "id">) {
   if (error) throw error
   return data as ExamRecord
 }
+export async function updateExam(id: string, value: Partial<Pick<ExamRecord,"course_id"|"title"|"exam_at"|"location"|"topics_summary">>) { const { data,error }=await supabase.from("exams").update(value).eq("id",id).select().single(); if(error)throw error; return data as ExamRecord }
+export async function deleteExam(id: string) { const { error }=await supabase.from("exams").delete().eq("id",id); if(error)throw error }

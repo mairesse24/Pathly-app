@@ -1,0 +1,7 @@
+.course-removal-dialog { display:grid; gap:16px; }
+.course-removal-summary { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px 18px; margin:0; padding:14px 14px 14px 34px; border-radius:12px; background:var(--surface); color:var(--muted); }
+.course-removal-safety { color:var(--muted); line-height:1.55; }
+.course-removal-actions { align-items:stretch; flex-wrap:wrap; }
+.course-removal-actions .btn { white-space:normal; }
+.btn-destructive { color:#8a2f2b; border-color:#d9aaa6; }
+@media(max-width:680px){.course-removal-summary { grid-template-columns:1fr; }.course-removal-actions { flex-direction:column-reverse; }.course-removal-actions .btn { width:100%; }}

@@ -1,0 +1,54 @@
+import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.112.3"
+
+export const corsHeaders = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info", "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Content-Type": "application/json" }
+export const googleCalendarScopes = ["openid", "email", "https://www.googleapis.com/auth/calendar.calendarlist.readonly", "https://www.googleapis.com/auth/calendar.events.freebusy"]
+export const respond = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: corsHeaders })
+
+function namedKey(name: string, legacy: string) { const value = Deno.env.get(legacy); if (value) return value; try { return JSON.parse(Deno.env.get(name) || "{}").default || "" } catch { return "" } }
+export function config() { return { clientId: Deno.env.get("GOOGLE_CALENDAR_CLIENT_ID") || "", clientSecret: Deno.env.get("GOOGLE_CALENDAR_CLIENT_SECRET") || "", redirectUri: Deno.env.get("GOOGLE_CALENDAR_REDIRECT_URI") || "", appUrl: Deno.env.get("PATHLY_APP_URL") || "", encryptionKey: Deno.env.get("GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY") || "" } }
+export function clients(authorization?: string | null) { const url = Deno.env.get("SUPABASE_URL") || ""; const pub = namedKey("SUPABASE_PUBLISHABLE_KEYS", "SUPABASE_ANON_KEY"); const secret = namedKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY"); if (!url || !pub || !secret) throw new Error("server_configuration"); return { admin: createClient(url, secret, { auth: { persistSession: false } }), userClient: createClient(url, pub, { global: authorization ? { headers: { Authorization: authorization } } : undefined, auth: { persistSession: false } }) } }
+export async function authenticate(req: Request) { const authorization = req.headers.get("Authorization"); if (!authorization?.startsWith("Bearer ")) throw new Error("authentication_required"); const value = clients(authorization); const { data: { user }, error } = await value.userClient.auth.getUser(authorization.slice(7)); if (error || !user) throw new Error("invalid_session"); return { ...value, user } }
+const toBase64 = (bytes: Uint8Array) => { let value = ""; for (const byte of bytes) value += String.fromCharCode(byte); return btoa(value) }
+const fromBase64 = (value: string) => Uint8Array.from(atob(value), character => character.charCodeAt(0))
+const base64url = (bytes: Uint8Array) => toBase64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
+async function key() { const bytes = fromBase64(config().encryptionKey); if (bytes.length !== 32) throw new Error("encryption_key_invalid"); return crypto.subtle.importKey("raw", bytes, "AES-GCM", false, ["encrypt", "decrypt"]) }
+async function encrypt(value: string) { const nonce = crypto.getRandomValues(new Uint8Array(12)); const encrypted = await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce }, await key(), new TextEncoder().encode(value)); return { ciphertext: toBase64(new Uint8Array(encrypted)), nonce: toBase64(nonce) } }
+async function decrypt(ciphertext: string, nonce: string) { const value = await crypto.subtle.decrypt({ name: "AES-GCM", iv: fromBase64(nonce) }, await key(), fromBase64(ciphertext)); return new TextDecoder().decode(value) }
+export const createState = () => base64url(crypto.getRandomValues(new Uint8Array(32)))
+export const hashState = async (value: string) => base64url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value))))
+type Token = { access_token: string; refresh_token?: string; expires_in: number; id_token?: string }
+export async function exchange(values: Record<string, string>) { const settings = config(); const response = await fetch("https://oauth2.googleapis.com/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ client_id: settings.clientId, client_secret: settings.clientSecret, redirect_uri: settings.redirectUri, ...values }), signal: AbortSignal.timeout(15000) }); if (!response.ok) throw new Error(`google_token_${response.status}`); return await response.json() as Token }
+export async function storeCredentials(admin: SupabaseClient, connectionId: string, userId: string, token: Token, priorRefresh?: string) { const access = await encrypt(token.access_token); const refreshValue = token.refresh_token || priorRefresh; if (!refreshValue) throw new Error("refresh_token_missing"); const refresh = await encrypt(refreshValue); const { error } = await admin.from("google_calendar_credentials").upsert({ connection_id: connectionId, user_id: userId, access_token_ciphertext: access.ciphertext, access_token_nonce: access.nonce, refresh_token_ciphertext: refresh.ciphertext, refresh_token_nonce: refresh.nonce, expires_at: new Date(Date.now() + token.expires_in * 1000).toISOString(), updated_at: new Date().toISOString() }, { onConflict: "connection_id" }); if (error) throw error; return token.access_token }
+export async function accessToken(admin: SupabaseClient, connection: { id: string; user_id: string }) { const { data, error } = await admin.from("google_calendar_credentials").select("*").eq("connection_id", connection.id).eq("user_id", connection.user_id).single(); if (error || !data) throw new Error("reauthorization_required"); if (new Date(data.expires_at).getTime() > Date.now() + 60000) return decrypt(data.access_token_ciphertext, data.access_token_nonce); const refresh = await decrypt(data.refresh_token_ciphertext, data.refresh_token_nonce); const token = await exchange({ grant_type: "refresh_token", refresh_token: refresh }); return storeCredentials(admin, connection.id, connection.user_id, token, refresh) }
+function safeGoogleErrorReason(payload: unknown) {
+  if (!payload || typeof payload !== "object") return "unknown"
+  const error = (payload as { error?: unknown }).error
+  if (!error || typeof error !== "object") return "unknown"
+  const status = (error as { status?: unknown }).status
+  const errors = (error as { errors?: unknown }).errors
+  const reason = Array.isArray(errors) && errors[0] && typeof errors[0] === "object"
+    ? (errors[0] as { reason?: unknown }).reason
+    : undefined
+  const value = typeof reason === "string" ? reason : typeof status === "string" ? status : "unknown"
+  return value.toLowerCase().replace(/[^a-z0-9_]+/g, "_").slice(0, 80) || "unknown"
+}
+
+export async function googleJson<T>(url: string, token: string, init?: RequestInit) {
+  const response = await fetch(url, {
+    ...init,
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...(init?.headers || {}) },
+    signal: AbortSignal.timeout(15000),
+  })
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null)
+    const reason = safeGoogleErrorReason(payload)
+    console.error("Google Calendar API request failed", {
+      operation: new URL(url).pathname,
+      status: response.status,
+      reason,
+    })
+    if (response.status === 401 || response.status === 403) throw new Error("reauthorization_required")
+    throw new Error(`google_api_${response.status}_${reason}`)
+  }
+  return await response.json() as T
+}

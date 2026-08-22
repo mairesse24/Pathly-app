@@ -17,8 +17,15 @@ import { Icon } from "../../components/ui/Icon"
 import { useAcademicData } from "../../context/AcademicDataContext"
 
 import { useProfile } from "../../context/ProfileContext"
+import { buildComingUpItems } from "../../utils/comingUp"
 import { dateKey, dayGreeting, formatInstant, todayKey } from "../../utils/dateTime"
 import { buildSmartPlan } from "../../utils/smartPlanning"
+import { listBusyPeriods, type BusyPeriod } from "../../services/googleCalendar"
+import {
+  dismissScheduleConflict,
+  firstUndismissedConflict,
+  scheduleConflictEditPath,
+} from "../../utils/scheduleConflicts"
 export function DashboardPage() {
   const { profile } = useProfile()
   const timezone = profile?.timezone
@@ -46,21 +53,45 @@ export function DashboardPage() {
   } = useAcademicData()
 
   const navigate = useNavigate()
+  const [busyPeriods, setBusyPeriods] = useState<BusyPeriod[]>([])
+  const [dismissedConflicts, setDismissedConflicts] = useState<Set<string>>(() => new Set())
 
-  const active = assignments.filter((a) => a.status !== "completed")
+  useEffect(() => {
+    const scheduled = studySessions.filter((session) => session.status === "scheduled")
+    if (!scheduled.length) {
+      setBusyPeriods([])
+      return
+    }
+    let active = true
+    const starts = scheduled.map((session) => new Date(session.start_at).getTime())
+    const ends = scheduled.map((session) => new Date(session.end_at).getTime())
+    const startsBefore = new Date(Math.max(...ends)).toISOString()
+    const endsAfter = new Date(Math.min(...starts)).toISOString()
+    listBusyPeriods(startsBefore, endsAfter)
+      .then((rows) => { if (active) setBusyPeriods(rows) })
+      .catch(() => { if (active) setBusyPeriods([]) })
+    return () => { active = false }
+  }, [studySessions])
+
+  const comingUpItems = useMemo(
+    () => buildComingUpItems({ assignments, exams, studySessions, courses, timezone }),
+    [assignments, exams, studySessions, courses, timezone],
+  )
 
   const plan = useMemo(
     () => buildSmartPlan({
       assignments,
       exams,
       studySessions,
+      busyPeriods,
       courses,
       reflection,
       preferences: profile,
       timeZone: timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
     }),
-    [assignments, courses, exams, profile, reflection, studySessions, timezone],
+    [assignments, busyPeriods, courses, exams, profile, reflection, studySessions, timezone],
   )
+  const visibleConflict = firstUndismissedConflict(plan.conflicts, dismissedConflicts)
 
   const nextExam = exams.find(
     (e) => e.exam_at && new Date(e.exam_at) >= new Date(),
@@ -79,6 +110,7 @@ export function DashboardPage() {
     <>
       <PageHeader
         title={`${dayGreeting(timezone)}, ${profile?.display_name.split(/\s+/)[0] || "student"}.`}
+        materialContext={{origin:"dashboard"}}
       />
       <main className="page dashboard">
         <div className="welcome">
@@ -180,13 +212,13 @@ export function DashboardPage() {
               ) : (
                 <p>No sessions scheduled today.</p>
               )}
-              {plan.conflicts.length > 0 && (
+              {visibleConflict && (
                 <div className="planning-warning" role="status">
                   <strong>Schedule conflict</strong>
-                  <p>{plan.conflicts[0].message}</p>
+                  <p>{visibleConflict.message}</p>
                   <div className="planning-actions">
-                    <Button variant="secondary" onClick={() => navigate("/calendar")}>Edit</Button>
-                    <Button variant="quiet">Ignore</Button>
+                    <Button variant="secondary" onClick={() => navigate(scheduleConflictEditPath(visibleConflict))}>Edit</Button>
+                    <Button variant="quiet" onClick={() => setDismissedConflicts((current) => dismissScheduleConflict(current, visibleConflict))}>Dismiss</Button>
                   </div>
                 </div>
               )}
@@ -208,39 +240,32 @@ export function DashboardPage() {
               </button>
             </div>
             <div className="schedule-list">
-              {active
-
-                .filter((a) => !sameDay(a.due_at))
-
-                .slice(0, 4)
-
-                .map((a) => (
-                  <div key={a.id}>
-                    <b>
-                      {a.due_at
-                        ? formatInstant(a.due_at, timezone, {
-                            month: "short",
-                            day: "numeric",
-                          })
-                        : "Soon"}
-                    </b>
-                    <span className="event-dot sage" />
-                    <p>
-                      <strong>{a.title}</strong>
-                      <small>
-                        {courseName(a.course_id)} ·{" "}
-                        {a.status.replace(/_/g, " ")}
-                      </small>
-                    </p>
-                  </div>
-                ))}
-              {!active.length && <p>You’re all caught up.</p>}
+              {comingUpItems.slice(0, 5).map((item) => (
+                <div key={`${item.kind}-${item.id}`}>
+                  <b>
+                    {formatInstant(item.at, timezone, {
+                      month: "short",
+                      day: "numeric",
+                    })}
+                  </b>
+                  <span className={`event-dot ${item.kind === "exam" ? "rose" : item.kind === "session" ? "blue" : "sage"}`} />
+                  <p>
+                    <strong>{item.title}</strong>
+                    <small>
+                      {item.courseCode ?? "Study session"}
+                      {item.detail ? ` · ${item.detail}` : ""}
+                    </small>
+                  </p>
+                </div>
+              ))}
+              {comingUpItems.length === 0 && <p>Nothing coming up yet.</p>}
             </div>
           </Card>
           <ReflectionCard
             initialMood={reflection?.mood ?? ""}
             initialEnergy={reflection?.energy ?? ""}
             initialNotes={reflection?.notes ?? ""}
+            questionDate={today}
             onSave={persistReflection}
           />
         </div>
@@ -256,6 +281,8 @@ function ReflectionCard({
 
   initialNotes,
 
+  questionDate,
+
   onSave,
 }: {
   initialMood: string
@@ -263,6 +290,8 @@ function ReflectionCard({
   initialNotes: string
 
   initialEnergy: string
+
+  questionDate: string
 
   onSave: (m: string, e: string, n: string) => Promise<unknown>
 }) {
@@ -300,25 +329,40 @@ function ReflectionCard({
     }
   }
 
-  const moods = ["strained", "low", "steady", "good", "rested"]
+  const moods = [
+    { value: "struggling", label: "😣 Struggling", legacy: ["strained"] },
+    { value: "overwhelmed", label: "😕 Overwhelmed", legacy: ["low"] },
+    { value: "steady", label: "😐 Steady", legacy: [] },
+    { value: "good", label: "🙂 Good", legacy: [] },
+    { value: "rested", label: "🌟 Rested", legacy: [] },
+  ]
+  const selectedMood = moods.find((option) => option.value === mood || option.legacy.includes(mood))?.value ?? mood
+  const questions = [
+    "How are you feeling today?",
+    "What would make today feel more manageable?",
+    "How is your energy holding up today?",
+    "What do you need most from today?",
+    "What is one thing you can give yourself credit for today?",
+  ]
+  const question = questions[Number.parseInt(questionDate.replace(/-/g, ""), 10) % questions.length]
 
   return (
     <Card className="reflection">
       <p className="eyebrow">Daily reflection</p>
-      <h3>How are you feeling today?</h3>
+      <h3>{question}</h3>
       <div className="moods">
-        {moods.map((m) => (
+        {moods.map((option) => (
           <button
-            key={m}
-            className={mood === m ? "selected" : ""}
+            key={option.value}
+            className={selectedMood === option.value ? "selected" : ""}
             onClick={() => {
-              setMood(m)
+              setMood(option.value)
 
               setStatus("idle")
             }}
-            aria-label={`Mood ${m}`}
+            aria-pressed={selectedMood === option.value}
           >
-            {m.slice(0, 1).toUpperCase()}
+            {option.label}
           </button>
         ))}
       </div>

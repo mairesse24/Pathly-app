@@ -43,6 +43,7 @@ Deno.serve(async (req) => {
     const { data: connection, error: connectionError } = await admin.from("canvas_connections")
       .update({
         canvas_base_url: stateRow.canvas_base_url,
+        auth_type: "oauth",
         canvas_user_id: token.user?.id != null ? String(token.user.id) : null,
         status: "connected",
         updated_at: new Date().toISOString(),

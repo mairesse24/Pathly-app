@@ -18,6 +18,7 @@ export type CourseRecord = {
   meeting_days: string[] | null
   meeting_start: string | null
   meeting_end: string | null
+  is_active: boolean
   source?: "manual" | "canvas"
   canvas_connection_id?: string | null
   canvas_course_id?: string | null
@@ -48,6 +49,20 @@ export type ExamRecord = {
   exam_at: string | null
   location: string | null
   topics_summary: string | null
+  source: string
+}
+export type CourseRoadmapEntryRecord = {
+  id: string
+  user_id: string
+  course_id: string
+  period_label: string | null
+  topic: string
+  description: string | null
+  deliverable: string | null
+  entry_date: string | null
+  source: string
+  sort_order: number
+  roadmap_item_key?: string | null
 }
 export type StudySessionRecord = {
   id: string

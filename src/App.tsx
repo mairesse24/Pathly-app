@@ -29,12 +29,18 @@ import { ProtectedRoute } from "./components/auth/ProtectedRoute"
 import { AuthPage } from "./pages/Auth"
 
 import { OnboardingPage } from "./pages/Onboarding"
+import { OnboardingRoute } from "./components/auth/OnboardingRoute"
 import { CourseDetailPage } from "./pages/CourseDetail"
 import { AcademicDataProvider } from "./context/AcademicDataContext"
 import { ProfileProvider } from "./context/ProfileContext"
+import { ThemeProvider } from "./context/ThemeContext"
+import { AboutPage, PrivacyPage, TermsPage } from "./pages/Legal"
+import { PublicFooter } from "./components/layout/PublicFooter"
+import "./publicInfo.css"
 
 export default function App() {
   return (
+    <ThemeProvider>
     <BrowserRouter>
       <AuthProvider>
         <ProfileProvider>
@@ -42,22 +48,27 @@ export default function App() {
           <AcademicDataProvider>
             <Routes>
               <Route path="/" element={<LandingPage />} />
-              <Route path="/auth" element={<AuthPage />} />
+              <Route path="/auth" element={<div className="auth-public-shell"><AuthPage /><PublicFooter /></div>} />
+              <Route path="/privacy" element={<PrivacyPage />} />
+              <Route path="/terms" element={<TermsPage />} />
+              <Route path="/about" element={<AboutPage />} />
               <Route element={<ProtectedRoute />}>
                 <Route path="/onboarding" element={<OnboardingPage />} />
-                <Route element={<AppShell />}>
-                  <Route path="/dashboard" element={<DashboardPage />} />
-                  <Route path="/study" element={<StudyHubPage />} />
-                  <Route
-                    path="/study/:courseId"
-                    element={<CourseDetailPage />}
-                  />
-                  <Route path="/calendar" element={<CalendarPage />} />
-                  <Route path="/degree" element={<DegreePlannerPage />} />
-                  <Route path="/companion" element={<CompanionPage />} />
-                  <Route path="/uploads" element={<UploadCenterPage />} />
-                  <Route path="/profile" element={<ProfilePage />} />
-                  <Route path="/settings" element={<SettingsPage />} />
+                <Route element={<OnboardingRoute />}>
+                  <Route element={<AppShell />}>
+                    <Route path="/dashboard" element={<DashboardPage />} />
+                    <Route path="/study" element={<StudyHubPage />} />
+                    <Route
+                      path="/study/:courseId"
+                      element={<CourseDetailPage />}
+                    />
+                    <Route path="/calendar" element={<CalendarPage />} />
+                    <Route path="/degree" element={<DegreePlannerPage />} />
+                    <Route path="/companion" element={<CompanionPage />} />
+                    <Route path="/uploads" element={<UploadCenterPage />} />
+                    <Route path="/profile" element={<ProfilePage />} />
+                    <Route path="/settings" element={<SettingsPage />} />
+                  </Route>
                 </Route>
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />
@@ -67,5 +78,6 @@ export default function App() {
         </ProfileProvider>
       </AuthProvider>
     </BrowserRouter>
+    </ThemeProvider>
   )
 }

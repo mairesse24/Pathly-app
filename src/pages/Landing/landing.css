@@ -1,0 +1,33 @@
+.hero-preview {
+  --preview-surface: #fffefa;
+  --preview-task-surface: #f5f4ef;
+  --preview-task-secondary: #eceee9;
+  --preview-ink: #2f3433;
+  --preview-muted: #59615f;
+  --preview-accent: #3f5d4e;
+
+  background: var(--preview-surface);
+  border-color: #d8d8d1;
+  color: var(--preview-ink);
+}
+
+.hero-preview .eyebrow,
+.hero-preview .preview-copy > p:not(.eyebrow),
+.hero-preview .preview-task span,
+.hero-preview .preview-note {
+  color: var(--preview-accent);
+}
+
+.hero-preview .preview-task {
+  background: var(--preview-task-surface);
+  color: var(--preview-ink);
+}
+
+.hero-preview .preview-task small {
+  color: var(--preview-muted);
+}
+
+.hero-preview .preview-task.faint {
+  background: var(--preview-task-secondary);
+  opacity: 1;
+}

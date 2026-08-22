@@ -1,0 +1,64 @@
+.calendar-week-controls,
+.calendar-layer-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.calendar-layer-toggle {
+  min-height: 42px;
+  padding: 8px 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.calendar-layer-toggle input {
+  accent-color: var(--green);
+}
+
+.roadmap-calendar-event {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px;
+  border: 1px dashed color-mix(in srgb, var(--green) 65%, var(--line));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--sage) 48%, var(--white));
+  color: var(--ink);
+  text-decoration: none;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.roadmap-calendar-event small {
+  color: var(--deep);
+  font-weight: 700;
+}
+
+.calendar-roadmap-notice {
+  margin: 12px 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+@media (max-width: 680px) {
+  .calendar-toolbar-actions,
+  .calendar-week-controls {
+    width: 100%;
+  }
+
+  .calendar-week-controls .btn {
+    flex: 1 1 96px;
+  }
+
+  .calendar-layer-toggle {
+    width: 100%;
+    justify-content: center;
+  }
+}

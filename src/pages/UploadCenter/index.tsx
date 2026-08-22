@@ -17,11 +17,14 @@ import { useAcademicData } from "../../context/AcademicDataContext"
 import { useAuth } from "../../context/AuthContext"
 import { useProfile } from "../../context/ProfileContext"
 import { listProcessingResults, processUpload } from "../../services/processing"
+import { listTranscriptImports, previewTranscriptImportRemoval, removeTranscriptImport, type TranscriptImport } from "../../services/transcriptImports"
+import { listPendingSyllabusExamConflicts, resolveSyllabusExamConflict, type SyllabusExamConflict } from "../../services/syllabusExamConflicts"
 
 import {
   deleteUpload,
   formatBytes,
   listUploads,
+  UploadDeletionError,
   uploadSourceFile,
   USER_QUOTA_BYTES,
   validateUpload,
@@ -48,16 +51,21 @@ const stageLabels: Record<ProcessingStage, string> = {
   creating: "Creating study materials…",
   saving: "Saving your results…",
 }
+function processingStageLabel(stage: ProcessingStage, category: UploadCategory) {
+  if ((category === "degree_audit" || category === "unofficial_transcript") && stage === "creating") return "Identifying coursework…"
+  return stageLabels[stage]
+}
 
 export function UploadCenterPage() {
   const { profile } = useProfile()
   const { user } = useAuth()
 
-  const { courses } = useAcademicData()
+  const { courses, exams, refreshAcademicData } = useAcademicData()
 
   const [params] = useSearchParams()
 
   const requested = params.get("category") as UploadCategory | null
+  const requestedFile = params.get("file")
 
   const [category, setCategory] = useState<UploadCategory>(
     requested && labels[requested] ? requested : "syllabus",
@@ -70,8 +78,18 @@ export function UploadCenterPage() {
   const [files, setFiles] = useState<UploadedFileRecord[]>([])
 
   const [results, setResults] = useState<ProcessingResultRecord[]>([])
+  const [transcriptImports, setTranscriptImports] = useState<TranscriptImport[]>([])
+  const [examConflicts, setExamConflicts] = useState<SyllabusExamConflict[]>([])
+  const [resolvingConflict, setResolvingConflict] = useState<{ id: string; resolution: "keep_existing" | "replace" } | null>(null)
+  const [conflictMessage, setConflictMessage] = useState("")
+  const [conflictError, setConflictError] = useState("")
+  const [uploadLoadError, setUploadLoadError] = useState("")
+  const [supportingLoadError, setSupportingLoadError] = useState("")
 
   const [processingId, setProcessingId] = useState("")
+  const [deletingId, setDeletingId] = useState("")
+  const [latestUploadedId, setLatestUploadedId] = useState("")
+  const processingInFlight = useRef(new Set<string>())
 
   const [state, setState] =
     useState<"idle" | "validating" | "uploading" | "success" | "error">("idle")
@@ -81,23 +99,69 @@ export function UploadCenterPage() {
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    Promise.all([listUploads(), listProcessingResults()])
-      .then(([uploads, processing]) => {
-        setFiles(uploads)
-        setResults(processing)
-      })
-      .catch((reason: unknown) => {
-        setState("error")
-        setMessage(
-          reason instanceof Error ? reason.message : "Unable to load uploads.",
-        )
-      })
+    void loadUploadCenter()
   }, [])
+
+  async function loadUploadCenter() {
+    setUploadLoadError("")
+    setSupportingLoadError("")
+    const [uploads, processing, conflicts, imports] = await Promise.allSettled([
+      listUploads(),
+      listProcessingResults(),
+      listPendingSyllabusExamConflicts(),
+      listTranscriptImports(),
+    ])
+    if (uploads.status === "fulfilled") {
+      setFiles(uploads.value)
+    } else {
+      setUploadLoadError(
+        "Your uploaded files could not be loaded. Check your connection and try again.",
+      )
+    }
+    if (processing.status === "fulfilled") setResults(processing.value)
+    if (conflicts.status === "fulfilled") setExamConflicts(conflicts.value)
+    if (imports.status === "fulfilled") setTranscriptImports(imports.value)
+    if ([processing, conflicts, imports].some((result) => result.status === "rejected")) {
+      setSupportingLoadError(
+        "Some upload review tools are temporarily unavailable. Your files are still shown below.",
+      )
+    }
+  }
+
+  useEffect(() => {
+    if (!latestUploadedId) return
+    document.getElementById(`upload-${latestUploadedId}`)?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    })
+  }, [latestUploadedId])
+
+  useEffect(() => {
+    if (!requestedFile || !files.some((item) => item.id === requestedFile)) return
+    document.getElementById(`upload-${requestedFile}`)?.scrollIntoView({ behavior: "smooth", block: "center" })
+  }, [files, requestedFile])
 
   const sensitive =
     category === "degree_audit" || category === "unofficial_transcript"
 
   const used = files.reduce((sum, item) => sum + item.size_bytes, 0)
+
+  async function resolveExamConflict(conflict: SyllabusExamConflict, resolution: "keep_existing" | "replace") {
+    if (resolvingConflict) return
+    setResolvingConflict({ id: conflict.id, resolution })
+    setConflictMessage("")
+    setConflictError("")
+    try {
+      await resolveSyllabusExamConflict(conflict.id, resolution)
+      setExamConflicts((current) => current.filter((item) => item.id !== conflict.id))
+      await refreshAcademicData()
+      setConflictMessage(resolution === "replace" ? "The proposed syllabus exam date replaced the prior syllabus date." : "The existing syllabus exam date was kept.")
+    } catch (reason) {
+      setConflictError(reason instanceof Error ? reason.message : "Unable to resolve the exam conflict.")
+    } finally {
+      setResolvingConflict(null)
+    }
+  }
 
   function openFilePicker() {
     inputRef.current?.click()
@@ -138,6 +202,7 @@ export function UploadCenterPage() {
       })
 
       setFiles((current) => [row, ...current])
+      setLatestUploadedId(row.id)
       setFile(null)
 
       if (inputRef.current) inputRef.current.value = ""
@@ -162,6 +227,8 @@ export function UploadCenterPage() {
   }
 
   async function process(row: UploadedFileRecord) {
+    if (processingInFlight.current.has(row.id)) return
+    processingInFlight.current.add(row.id)
     setProcessingId(row.id)
     setMessage("")
 
@@ -188,55 +255,42 @@ export function UploadCenterPage() {
         ),
       )
 
-      setResults((current) => [
-        result,
-        ...current.filter((item) => item.upload_id !== row.id),
-      ])
-
-      setFiles((current) =>
-        current.map((item) =>
-          item.id === row.id
-            ? {
-                ...item,
-                processing_status: "ready_for_review",
-                processing_stage: null,
-              }
-            : item,
-        ),
-      )
+      const [refreshedUploads, refreshedResults] = await Promise.allSettled([listUploads(), listProcessingResults()])
+      if (refreshedUploads.status === "fulfilled") setFiles(refreshedUploads.value)
+      else setFiles((current) => current.map((item) => item.id === row.id ? { ...item, processing_status: "ready_for_review", processing_stage: null } : item))
+      if (refreshedResults.status === "fulfilled") setResults(refreshedResults.value)
+      else setResults((current) => [result, ...current.filter((item) => item.upload_id !== row.id)])
 
       setState("success")
       setMessage(
         row.category === "syllabus"
           ? "Your syllabus is ready to review."
-          : "Your study materials are ready.",
+          : row.category === "lecture"
+            ? "Your study materials are ready."
+            : "Your candidate coursework is ready to review.",
       )
     } catch {
-      setFiles((current) =>
-        current.map((item) =>
-          item.id === row.id
-            ? {
-                ...item,
-                processing_status: "processing_failed",
-                processing_stage: null,
-              }
-            : item,
-        ),
-      )
+      const [refreshedUploads, refreshedResults] = await Promise.allSettled([listUploads(), listProcessingResults()])
+      if (refreshedUploads.status === "fulfilled") setFiles(refreshedUploads.value)
+      else setFiles((current) => current.map((item) => item.id === row.id ? { ...item, processing_status: "processing_failed", processing_stage: null } : item))
+      if (refreshedResults.status === "fulfilled") setResults(refreshedResults.value)
 
       setState("idle")
       setMessage("")
     } finally {
+      processingInFlight.current.delete(row.id)
       setProcessingId("")
     }
   }
 
   async function remove(row: UploadedFileRecord) {
+    if (deletingId || processingInFlight.current.has(row.id) || row.processing_status === "processing") return
     if (
       !window.confirm(`Delete ${row.original_filename}? This cannot be undone.`)
     )
       return
 
+    setDeletingId(row.id)
     try {
       await deleteUpload(row)
       setFiles((current) => current.filter((item) => item.id !== row.id))
@@ -246,10 +300,40 @@ export function UploadCenterPage() {
       setState("success")
       setMessage("File deleted and storage space reclaimed.")
     } catch (reason) {
+      // The active-upload view requires both metadata and a live Storage object.
+      // Reload it even after a partial failure so an already-removed source is not
+      // left presented as downloadable in this mounted screen.
+      const refreshed = await listUploads().catch(() => null)
+      if (refreshed) setFiles(refreshed)
       setState("error")
       setMessage(
-        reason instanceof Error ? reason.message : "Unable to delete the file.",
+        reason instanceof UploadDeletionError || reason instanceof Error
+          ? reason.message
+          : "Unable to delete the file.",
       )
+    } finally {
+      setDeletingId("")
+    }
+  }
+
+  async function removeImportedCourses(item: TranscriptImport) {
+    try {
+      const preview = await previewTranscriptImportRemoval(item.id)
+      const details = [
+        `${preview.imported_records} imported course record${preview.imported_records === 1 ? "" : "s"}`,
+        `${preview.completed_course_rows_deleted} completed-course row${preview.completed_course_rows_deleted === 1 ? "" : "s"} removed`,
+        preview.completed_course_rows_restored ? `${preview.completed_course_rows_restored} restored from another transcript` : "",
+        preview.manual_rows_preserved ? `${preview.manual_rows_preserved} manual course${preview.manual_rows_preserved === 1 ? "" : "s"} preserved` : "",
+      ].filter(Boolean).join("; ")
+      if (!window.confirm(`Remove this transcript import? ${details}. This can only be reversed by re-importing the transcript.`)) return
+      await removeTranscriptImport(item.id)
+      setTranscriptImports(current => current.filter(value => value.id !== item.id))
+      await refreshAcademicData()
+      setState("success")
+      setMessage("Transcript-imported course history removed. Other uploads and manually added coursework were preserved.")
+    } catch (reason) {
+      setState("error")
+      setMessage(reason instanceof Error ? reason.message : "Unable to remove imported courses.")
     }
   }
 
@@ -266,6 +350,10 @@ export function UploadCenterPage() {
             </p>
           </div>
         </div>
+        <p className="academic-disclaimer">AI-generated summaries and extracted dates can make mistakes. Review important information before relying on it.</p>
+        {uploadLoadError && <Card className="section-error"><p role="alert">{uploadLoadError}</p><Button variant="secondary" onClick={() => void loadUploadCenter()}>Retry loading uploads</Button></Card>}
+        {supportingLoadError && <p className="form-message section-error" role="status">{supportingLoadError}</p>}
+        {examConflicts.length > 0 && <Card className="processing-review"><p className="eyebrow">Exam dates need review</p><h3>Two syllabi disagree</h3><p>Pathly kept the existing syllabus exam on Dashboard and Calendar. Choose whether to keep it or replace it with the proposed date.</p>{examConflicts.map((conflict) => { const existing=exams.find((exam)=>exam.id===conflict.existing_exam_id);const course=courses.find((item)=>item.id===conflict.course_id);const isResolving=resolvingConflict?.id===conflict.id;return <div className="review-row" key={conflict.id}><div><strong>{course?.course_code??"Course"} — {conflict.proposed_title}</strong><p>Existing: {existing?.exam_at?formatInstant(existing.exam_at,profile?.timezone,{dateStyle:"medium",timeStyle:"short"}):"No date"}<br/>Proposed: {conflict.proposed_exam_at?formatInstant(conflict.proposed_exam_at,profile?.timezone,{dateStyle:"medium",timeStyle:"short"}):"No date"}</p></div><div className="form-actions"><Button variant="secondary" onClick={()=>void resolveExamConflict(conflict,"keep_existing")} disabled={resolvingConflict!==null}>{isResolving&&resolvingConflict.resolution==="keep_existing"?"Keeping…":"Keep existing"}</Button><Button onClick={()=>void resolveExamConflict(conflict,"replace")} disabled={resolvingConflict!==null}>{isResolving&&resolvingConflict.resolution==="replace"?"Applying…":"Use proposed"}</Button></div></div>})}{conflictError&&<p className="form-message" role="alert">{conflictError}</p>}{conflictMessage&&<p className="save-success" role="status">{conflictMessage}</p>}</Card>}
         <Card
           className="upload-zone"
           onClick={(event) => {
@@ -332,13 +420,7 @@ export function UploadCenterPage() {
               <strong>Selected:</strong> {file.name} · {formatBytes(file.size)}
             </p>
           )}
-          {sensitive && (
-            <p className="privacy-notice">
-              <strong>Sensitive academic record.</strong> Only you can access
-              this source file. Degree audits and transcripts are not processed
-              in this milestone.
-            </p>
-          )}
+          <p className="privacy-notice"><strong>{sensitive?"Sensitive academic record. ":"Review before uploading. "}</strong>Before uploading, review your file and remove information Pathly doesn&apos;t need. Do not upload Social Security numbers, passwords, financial details, medical records, or other unnecessary sensitive personal information.</p>
           <Button onClick={upload} disabled={!file || state === "uploading"}>
             {state === "uploading" ? "Uploading…" : "Upload file"}
           </Button>
@@ -362,13 +444,13 @@ export function UploadCenterPage() {
             />
           </div>
         </div>
+        {transcriptImports.length > 0 && <Card className="processing-review"><p className="eyebrow">Transcript imports</p><h3>Imported course history</h3><p>Removing an import affects only coursework recorded from that specific transcript. Source files, manual coursework, assignments, exams, and roadmap entries are not removed.</p>{transcriptImports.map(item => { const count=item.course_count;return <div className="review-row" key={item.id}><div><strong>{count} imported course record{count===1?"":"s"}</strong><p>Imported {formatInstant(item.created_at,profile?.timezone,{dateStyle:"medium"})}</p></div><Button variant="secondary" onClick={()=>void removeImportedCourses(item)}>Remove imported courses</Button></div>})}</Card>}
         {files.length ? (
           <div className="uploaded-file-list">
             {files.map((row) => {
               const result = results.find((item) => item.upload_id === row.id)
 
-              const processable =
-                row.category === "syllabus" || row.category === "lecture"
+              const processable = true
 
               const isProcessing =
                 processingId === row.id ||
@@ -379,15 +461,23 @@ export function UploadCenterPage() {
                   ? "Try again"
                   : row.category === "syllabus"
                     ? "Review syllabus"
-                    : "Create study materials"
+                    : row.category === "lecture"
+                      ? "Create study materials"
+                      : row.category === "unofficial_transcript"
+                        ? "Review transcript"
+                        : "Review degree audit"
 
               const supportingCopy =
                 row.category === "syllabus"
                   ? "Pathly can identify important dates, assignments, exams, and course information for you to review."
-                  : "Pathly can turn this material into a summary, key concepts, flashcards, and practice questions."
+                  : row.category === "lecture"
+                    ? "Pathly can turn this material into a summary, key concepts, flashcards, and practice questions."
+                    : row.category === "unofficial_transcript"
+                      ? "Pathly can identify completed and in-progress courses from this document. You'll review everything before it is added."
+                      : "Pathly will check whether this is your personal degree audit or a degree/transfer guide, then show you what it found either way. You'll review everything before anything is added."
 
               return (
-                <div key={row.id} className="upload-with-review">
+                <div key={row.id} id={`upload-${row.id}`} className="upload-with-review">
                   <Card className="uploaded-file-row">
                     <div>
                       <p className="eyebrow">{labels[row.category]}</p>
@@ -400,13 +490,14 @@ export function UploadCenterPage() {
                       </p>
                       {isProcessing && (
                         <p className="upload-status" role="status">
-                          {stageLabels[row.processing_stage ?? "preparing"]}
+                          {processingStageLabel(row.processing_stage ?? "preparing", row.category)}
                         </p>
                       )}
                       {row.processing_status === "processing_failed" && (
                         <p className="processing-failure" role="alert">
-                          We couldn&apos;t process this file. Your original file
-                          is still safely stored.
+                          {row.category === "degree_audit" || row.category === "unofficial_transcript"
+                            ? "We couldn't review this document. Your original file is still safely stored."
+                            : "We couldn't process this file. Your original file is still safely stored."}
                         </p>
                       )}
                       {processable && !result && !isProcessing && (
@@ -420,22 +511,32 @@ export function UploadCenterPage() {
                           disabled={isProcessing}
                         >
                           {isProcessing
-                            ? stageLabels[row.processing_stage ?? "preparing"]
+                            ? processingStageLabel(row.processing_stage ?? "preparing", row.category)
                             : actionLabel}
                         </Button>
                       )}
                       <Button
                         variant="secondary"
+                        disabled={isProcessing || deletingId !== ""}
                         onClick={() => void remove(row)}
                       >
-                        Delete
+                        {deletingId === row.id ? "Deleting…" : "Delete"}
                       </Button>
                     </div>
                   </Card>
                   {result && (
                     <ProcessingReview
                       record={result}
-                      onApproved={(approved) => {
+                      upload={row}
+                      onCourseChanged={(courseId)=>setFiles(current=>current.map(item=>item.id===row.id?{...item,course_id:courseId}:item))}
+                      onApproved={(approved, sourceDeleted) => {
+                        if (approved.kind === "unofficial_transcript") void listTranscriptImports().then(setTranscriptImports)
+                        if (sourceDeleted) {
+                          setResults((current) => current.filter((item) => item.id !== approved.id))
+                          setFiles((current) => current.filter((item) => item.id !== row.id))
+                          setMessage("Courses confirmed and the original document was deleted.")
+                          return
+                        }
                         setResults((current) =>
                           current.map((item) =>
                             item.id === approved.id ? approved : item,
@@ -448,6 +549,10 @@ export function UploadCenterPage() {
                               : item,
                           ),
                         )
+                        void Promise.allSettled([listUploads(), listProcessingResults()]).then(([uploads, processing]) => {
+                          if (uploads.status === "fulfilled") setFiles(uploads.value)
+                          if (processing.status === "fulfilled") setResults(processing.value)
+                        })
                       }}
                     />
                   )}

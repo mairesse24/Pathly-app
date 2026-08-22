@@ -1,10 +1,38 @@
 import { supabase } from "../lib/supabase"
-import type { ProcessingResultRecord, ProcessingStage, SyllabusResult } from "../types/uploads"
+import type { AcademicRecordCourse, DegreeAuditRequirement, DegreeAuditResult, ProcessingResultRecord, ProcessingStage, SyllabusResult } from "../types/uploads"
+import { deleteUpload } from "./uploads"
 
 export async function listProcessingResults() {
   const { data, error } = await supabase.from("ai_processing_results").select("*").order("created_at", { ascending: false })
   if (error) throw error
   return data as ProcessingResultRecord[]
+}
+
+export async function confirmAcademicRecord(processing: ProcessingResultRecord, courses: AcademicRecordCourse[], deleteOriginal: boolean) {
+  const { error } = await supabase.rpc("confirm_academic_record_processing", { p_processing_id: processing.id, p_courses: courses })
+  if (error) throw error
+  if (deleteOriginal) {
+    const { data: upload, error: uploadError } = await supabase.from("uploaded_files").select("*").eq("id", processing.upload_id).single()
+    if (uploadError) throw uploadError
+    await deleteUpload(upload)
+  }
+  return { ...processing, status: "approved", approved_at: new Date().toISOString() } as ProcessingResultRecord
+}
+
+export async function confirmDegreeAudit(processing: ProcessingResultRecord, result: DegreeAuditResult, courses: AcademicRecordCourse[], requirements: DegreeAuditRequirement[], deleteOriginal: boolean) {
+  const { error } = await supabase.rpc("confirm_degree_audit_processing", {
+    p_processing_id: processing.id,
+    p_courses: courses,
+    p_requirements: requirements.map((item,index)=>({...item,sort_order:index})),
+    p_plan_metadata: { university: result.university, major: result.major, catalog_year: result.catalog_year, total_credits_required: result.total_credits_required, total_credits_completed: result.total_credits_completed },
+  })
+  if (error) throw error
+  if (deleteOriginal) {
+    const { data: upload, error: uploadError } = await supabase.from("uploaded_files").select("*").eq("id", processing.upload_id).single()
+    if (uploadError) throw uploadError
+    await deleteUpload(upload)
+  }
+  return { ...processing, status: "approved", approved_at: new Date().toISOString() } as ProcessingResultRecord
 }
 
 export async function processUpload(uploadId: string, onStage?: (stage: ProcessingStage) => void) {
@@ -32,16 +60,36 @@ export async function approveSyllabus(input: {
   result: SyllabusResult
   assignmentIndexes: number[]
   examIndexes: number[]
+  courseId: string
+  courseMetadata?: Record<string, unknown>
+  roadmap?: SyllabusResult["roadmap"]
 }) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user || user.id !== input.processing.user_id) throw new Error("Your session is no longer valid.")
   const assignments = input.assignmentIndexes.map((index) => input.result.assignments[index]).filter(Boolean)
   const exams = input.examIndexes.map((index) => input.result.exams[index]).filter(Boolean)
+  const roadmap = (input.roadmap || []).filter((item) => item.topic.trim())
   if (assignments.some((item) => !item.title) || exams.some((item) => !item.title)) throw new Error("Every selected item needs a title.")
 
   const { error } = await supabase.rpc("approve_syllabus_processing", {
-    p_processing_id: input.processing.id, p_assignments: assignments, p_exams: exams,
+    p_processing_id: input.processing.id, p_assignments: assignments, p_exams: exams, p_course_id: input.courseId, p_course_metadata: input.courseMetadata || {}, p_roadmap: roadmap,
   })
-  if (error) throw error
-  return { ...input.processing, status: "approved", approved_at: new Date().toISOString() } as ProcessingResultRecord
+  if (error) throw syllabusApprovalError(error)
+  return { ...input.processing, course_id: input.courseId, status: "approved", approved_at: new Date().toISOString() } as ProcessingResultRecord
+}
+
+export function syllabusApprovalError(error: unknown) {
+  const databaseError = error as { code?: string; message?: string; details?: string } | null
+  const code = databaseError?.code || "unknown"
+  const category = code === "42501"
+    ? "permission_denied"
+    : code === "PGRST202" || code === "42883"
+      ? "rpc_contract_mismatch"
+      : code === "22023"
+        ? "invalid_review_payload"
+        : code === "42702"
+          ? "rpc_query_error"
+          : databaseError?.message?.split(":", 1)[0] || "syllabus_approval_failed"
+  const detail = databaseError?.message || databaseError?.details || "The server did not provide an error message."
+  return new Error(`Syllabus approval failed (${category}): ${detail}`)
 }

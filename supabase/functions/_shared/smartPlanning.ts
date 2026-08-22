@@ -5,6 +5,7 @@ export type PlanningAssignment = {
   due_at: string | null
   estimated_minutes: number | null
   status: string
+  canvas_submission_status?: string | null
 }
 
 export type PlanningExam = {
@@ -50,6 +51,7 @@ export type PlanningPriority = {
   title: string
   reason: string
   suggestedMinutes: number
+  hasEstimate: boolean
   overdue: boolean
   needsStatusConfirmation: boolean
   score: number
@@ -58,19 +60,35 @@ export type PlanningPriority = {
 export type PlanningConflict = {
   firstSessionId: string
   secondSessionId: string
+  source: "study_session" | "exam" | "google_calendar"
+  firstStartAt: string
+  firstEndAt: string
+  secondStartAt: string
+  secondEndAt: string
   message: string
+}
+
+export type PlanningBusyPeriod = {
+  id: string
+  starts_at: string
+  ends_at: string
+  source: "google_calendar"
 }
 
 export type SmartPlan = {
   priorities: PlanningPriority[]
   conflicts: PlanningConflict[]
   energyAdjustment: "low" | "high" | "none"
+  studyPreferences: { preferredTime: string | null; focusMinutes: number; breakMinutes: number | null; studiesStraightThrough: boolean }
+  totalEstimatedMinutes: number | null
+  unresolvedSubmissionStatus: boolean
 }
 
 export type SmartPlanInput = {
   assignments: PlanningAssignment[]
   exams: PlanningExam[]
   studySessions: PlanningSession[]
+  busyPeriods?: PlanningBusyPeriod[]
   courses: PlanningCourse[]
   reflection?: PlanningReflection | null
   preferences?: PlanningPreferences | null
@@ -108,7 +126,7 @@ function calendarDaysBetween(from: Date, to: Date, timeZone: string) {
 
 function energyAdjustment(reflection?: PlanningReflection | null) {
   const value = `${reflection?.energy || ""} ${reflection?.mood || ""}`.toLowerCase()
-  if (/low|strained|drained|tired/.test(value)) return "low" as const
+  if (/low|strained|struggling|overwhelmed|drained|tired/.test(value)) return "low" as const
   if (/high|rested|energized|good/.test(value)) return "high" as const
   return "none" as const
 }
@@ -153,11 +171,17 @@ export function buildSmartPlan(input: SmartPlanInput): SmartPlan {
     const days = calendarDaysBetween(now, due, input.timeZone)
     if (hours > 7 * 24) continue
     const overdue = hours < 0
+    // Canvas sync already turns a "submitted"/"late" status into status="completed" (filtered
+    // above), so any status reaching here with a known canvas_submission_status of "missing" or
+    // "unsubmitted" is a confirmed non-submission, not an open question.
+    const canvasConfirmsIncomplete =
+      assignment.canvas_submission_status === "missing" || assignment.canvas_submission_status === "unsubmitted"
+    const submissionStatusUnknown = overdue && !canvasConfirmsIncomplete
     let score = assignment.status === "in_progress" ? 10 : 5
     let reason = "Due this week"
     if (overdue) {
       score += 130
-      reason = "Past due — did you submit it?"
+      reason = canvasConfirmsIncomplete ? "Past due — Canvas confirms it hasn't been submitted" : "Past due"
     } else if (hours <= 24) {
       score += 115
       reason = days === 0 ? "Due today" : "Due within 24 hours"
@@ -177,7 +201,8 @@ export function buildSmartPlan(input: SmartPlanInput): SmartPlan {
       now,
     )
     if (planned > 0 && !overdue) reason += " · Study time is already planned"
-    const estimate = assignment.estimated_minutes || preferredMinutes
+    const hasEstimate = typeof assignment.estimated_minutes === "number" && assignment.estimated_minutes > 0
+    const estimate = hasEstimate ? (assignment.estimated_minutes as number) : preferredMinutes
     const suggested = energy === "low" && !overdue
       ? Math.min(estimate, 30)
       : Math.min(estimate, preferredMinutes)
@@ -190,8 +215,9 @@ export function buildSmartPlan(input: SmartPlanInput): SmartPlan {
       title: assignment.title,
       reason,
       suggestedMinutes: Math.max(10, suggested),
+      hasEstimate,
       overdue,
-      needsStatusConfirmation: overdue || assignment.status === "overdue" || assignment.status === "awaiting_confirmation",
+      needsStatusConfirmation: submissionStatusUnknown || assignment.status === "awaiting_confirmation",
       score,
     })
   }
@@ -215,6 +241,7 @@ export function buildSmartPlan(input: SmartPlanInput): SmartPlan {
       title: `${exam.title} review`,
       reason,
       suggestedMinutes: energy === "low" && days > 0 ? Math.min(30, preferredMinutes) : preferredMinutes,
+      hasEstimate: false,
       overdue: false,
       needsStatusConfirmation: false,
       score,
@@ -231,7 +258,12 @@ export function buildSmartPlan(input: SmartPlanInput): SmartPlan {
       conflicts.push({
         firstSessionId: scheduled[index].id,
         secondSessionId: scheduled[next].id,
-        message: "You already have something planned during this time.",
+        source: "study_session",
+        firstStartAt: scheduled[index].start_at,
+        firstEndAt: scheduled[index].end_at,
+        secondStartAt: scheduled[next].start_at,
+        secondEndAt: scheduled[next].end_at,
+        message: "This study session overlaps another Pathly study session.",
       })
     }
   }
@@ -245,17 +277,55 @@ export function buildSmartPlan(input: SmartPlanInput): SmartPlan {
         conflicts.push({
           firstSessionId: session.id,
           secondSessionId: exam.id,
-          message: "You already have something planned during this time.",
+          source: "exam",
+          firstStartAt: session.start_at,
+          firstEndAt: session.end_at,
+          secondStartAt: exam.exam_at,
+          secondEndAt: exam.exam_at,
+          message: "This study session overlaps an exam.",
+        })
+      }
+    }
+  }
+  for (const session of scheduled) {
+    const start = new Date(session.start_at).getTime()
+    const end = new Date(session.end_at).getTime()
+    for (const busy of input.busyPeriods ?? []) {
+      const busyStart = new Date(busy.starts_at).getTime()
+      const busyEnd = new Date(busy.ends_at).getTime()
+      if (busyStart < end && busyEnd > start) {
+        conflicts.push({
+          firstSessionId: session.id,
+          secondSessionId: busy.id,
+          source: "google_calendar",
+          firstStartAt: session.start_at,
+          firstEndAt: session.end_at,
+          secondStartAt: busy.starts_at,
+          secondEndAt: busy.ends_at,
+          message: "This study session overlaps busy time from Google Calendar.",
         })
       }
     }
   }
 
+  const priorities = candidates
+    .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title))
+    .slice(0, energy === "low" ? 2 : 3)
+  const estimatedPriorities = priorities.filter((priority) => priority.hasEstimate)
+
   return {
-    priorities: candidates
-      .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title))
-      .slice(0, energy === "low" ? 2 : 3),
+    priorities,
     conflicts,
     energyAdjustment: energy,
+    studyPreferences: {
+      preferredTime: input.preferences?.preferred_study_time === "no_preference" ? null : input.preferences?.preferred_study_time || null,
+      focusMinutes: preferredMinutes,
+      breakMinutes: input.preferences?.prefers_breaks ? input.preferences.break_duration_minutes || null : null,
+      studiesStraightThrough: input.preferences?.prefers_breaks === false,
+    },
+    totalEstimatedMinutes: estimatedPriorities.length
+      ? estimatedPriorities.reduce((sum, priority) => sum + priority.suggestedMinutes, 0)
+      : null,
+    unresolvedSubmissionStatus: priorities.some((priority) => priority.needsStatusConfirmation),
   }
 }

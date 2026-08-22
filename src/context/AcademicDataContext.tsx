@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react"
@@ -12,6 +13,7 @@ import { useAuth } from "./AuthContext"
 import * as semesterService from "../services/semesters"
 
 import * as courseService from "../services/courses"
+import type { CourseRemovalMode } from "../services/courses"
 
 import * as assignmentService from "../services/assignments"
 
@@ -22,6 +24,10 @@ import * as sessionService from "../services/studySessions"
 import * as reflectionService from "../services/reflections"
 import { useProfile } from "./ProfileContext"
 import { todayKey } from "../utils/dateTime"
+import {
+  activeCourseIds,
+  filterActiveCourseItems,
+} from "../utils/activePlanning"
 import type {
   AssignmentRecord,
   CourseRecord,
@@ -52,7 +58,9 @@ type Value = {
 
   addCourse: (
     v: Pick<CourseRecord, "course_code" | "course_name">,
-  ) => Promise<void>
+  ) => Promise<CourseRecord>
+  updateCourse: (id:string,v:Pick<CourseRecord,"course_code"|"course_name">)=>Promise<CourseRecord>
+  removeCourse: (id:string,mode:CourseRemovalMode)=>Promise<void>
 
   setAssignmentStatus: (
     id: string,
@@ -78,8 +86,25 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
     [loading, setLoading] = useState(true),
     [error, setError] = useState("")
 
+  // load() can be re-triggered before a previous call finishes -- user/today
+  // both change during normal startup (auth resolving, then profile/timezone
+  // resolving), and refreshAcademicData() can also be called manually (e.g.
+  // right after a syllabus approval) while that effect-driven call is still
+  // in flight. Without a sequence guard, whichever call's Promise.all merely
+  // *settles* last wins, including a stale call's `if (!user)` clear -- a
+  // late-resolving stale success is harmless (it carries the same live data),
+  // but a stale call landing after a fresher one has already set correct
+  // state is not, and reliably nukes whichever table happens to be slowest
+  // to resolve (assignments, being the largest of these queries here, was
+  // the one that lost this race in practice). Only the most recently
+  // *started* call is ever allowed to write state.
+  const loadSeq = useRef(0)
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current
+    const stale = () => loadSeq.current !== seq
+    if (import.meta.env.DEV) console.debug(`[AcademicData] load#${seq} start`, { userId: user?.id ?? null, today })
     if (!user) {
+      if (stale()) return
       setSemesters([])
 
       setCourses([])
@@ -128,21 +153,39 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
         reflectionService.getReflection(today),
       ])
 
+      if (stale()) {
+        if (import.meta.env.DEV) console.debug(`[AcademicData] load#${seq} discarded -- superseded by load#${loadSeq.current}`)
+        return
+      }
+
+      if (import.meta.env.DEV) console.debug(`[AcademicData] load#${seq} raw`, { courses: c.length, assignments: a.length, exams: e.length })
+
       setSemesters(s)
 
       setCourses(c)
 
-      setAssignments(a)
+      const currentCourseIds = activeCourseIds(c)
+      const activeAssignments = filterActiveCourseItems(a, currentCourseIds)
+      const activeExams = filterActiveCourseItems(e, currentCourseIds)
 
-      setExams(e)
+      if (import.meta.env.DEV) console.debug(`[AcademicData] load#${seq} filtered`, {
+        activeCourseIds: Array.from(currentCourseIds),
+        assignments: { before: a.length, after: activeAssignments.length, ids: activeAssignments.map((item) => item.id) },
+        exams: { before: e.length, after: activeExams.length, ids: activeExams.map((item) => item.id) },
+      })
 
-      setStudySessions(ss)
+      setAssignments(activeAssignments)
+
+      setExams(activeExams)
+
+      setStudySessions(filterActiveCourseItems(ss, currentCourseIds, true))
 
       setReflection(r)
     } catch (e) {
+      if (stale()) return
       setError(e instanceof Error ? e.message : "Unable to load academic data")
     } finally {
-      setLoading(false)
+      if (!stale()) setLoading(false)
     }
   }, [user, today])
   useEffect(() => {
@@ -152,7 +195,7 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
   async function addCourse(
     v: Pick<CourseRecord, "course_code" | "course_name">,
   ) {
-    if (!user) return
+    if (!user) throw new Error("You must be signed in to add a course")
 
     const row = await courseService.createCourse({
       user_id: user.id,
@@ -172,10 +215,16 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
       meeting_start: null,
 
       meeting_end: null,
+
+      is_active: true,
     })
 
     setCourses((x) => [...x, row])
+    return row
   }
+
+  async function updateCourse(id:string,v:Pick<CourseRecord,"course_code"|"course_name">){const row=await courseService.updateCourse(id,v);setCourses(current=>current.map(course=>course.id===id?row:course));return row}
+  async function removeCourse(id:string,mode:CourseRemovalMode){await courseService.removeCourseSafely(id,mode);setCourses(current=>current.filter(course=>course.id!==id));await load()}
 
   async function setAssignmentStatus(
     id: string,
@@ -228,6 +277,8 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
         refreshAcademicData: load,
 
         addCourse,
+        updateCourse,
+        removeCourse,
 
         setAssignmentStatus,
 

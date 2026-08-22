@@ -1,6 +1,6 @@
 export type CompanionSource = {
   label: string
-  type: "assignment" | "exam" | "calendar" | "lecture" | "syllabus" | "course" | "reflection"
+  type: "assignment" | "exam" | "calendar" | "lecture" | "syllabus" | "course" | "reflection" | "note"
 }
 export type CompanionMessage = {
   id: string

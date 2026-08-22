@@ -1,10 +1,13 @@
-import { useNavigate } from "react-router-dom"
+import { useState } from "react"
 import { Button } from "../ui/Button"
 import { Icon } from "../ui/Icon"
 import { useProfile } from "../../context/ProfileContext"
 import { formatDateKey, todayKey } from "../../utils/dateTime"
-export function PageHeader({ title }: { title: string }) {
-  const navigate = useNavigate()
+import { AddMaterialDialog, type MaterialContext } from "../uploads/AddMaterialDialog"
+import { NotificationPanel } from "../notifications/NotificationPanel"
+import type { UploadedFileRecord } from "../../types/uploads"
+export function PageHeader({ title, materialContext, onMaterialUploaded, closeOnUpload }: { title: string; materialContext?: MaterialContext; onMaterialUploaded?: (row: UploadedFileRecord) => void; closeOnUpload?: boolean }) {
+  const [materialsOpen, setMaterialsOpen] = useState(false)
   const { profile } = useProfile()
   const today = todayKey(profile?.timezone)
   return (
@@ -20,13 +23,12 @@ export function PageHeader({ title }: { title: string }) {
         <h1>{title}</h1>
       </div>
       <div className="top-actions">
-        <button className="icon-button" aria-label="Notifications">
-          <Icon name="bell" />
-        </button>
-        <Button variant="secondary" onClick={() => navigate("/uploads")}>
+        <NotificationPanel />
+        <Button variant="secondary" onClick={() => setMaterialsOpen(true)}>
           <Icon name="upload" size={17} /> Add material
         </Button>
       </div>
+      <AddMaterialDialog open={materialsOpen} onClose={() => setMaterialsOpen(false)} context={materialContext} onUploaded={(row) => { if (closeOnUpload) setMaterialsOpen(false); onMaterialUploaded?.(row) }} />
     </header>
   )
 }

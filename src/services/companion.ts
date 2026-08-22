@@ -26,6 +26,33 @@ export async function getLatestCompanionConversation() {
   }
 }
 
+export async function listCompanionConversations() {
+  const { data, error } = await supabase
+    .from("companion_conversations")
+    .select("*")
+    .order("updated_at", { ascending: false })
+  if (error) throw error
+  return data as CompanionConversation[]
+}
+
+export async function getCompanionConversationMessages(conversationId: string) {
+  const { data, error } = await supabase
+    .from("companion_messages")
+    .select("*")
+    .eq("conversation_id", conversationId)
+    .order("created_at")
+  if (error) throw error
+  return data as CompanionMessage[]
+}
+
+export async function deleteCompanionConversation(conversationId: string) {
+  const { error } = await supabase
+    .from("companion_conversations")
+    .delete()
+    .eq("id", conversationId)
+  if (error) throw error
+}
+
 export async function sendCompanionMessage(input: {
   conversationId: string | null
   message: string

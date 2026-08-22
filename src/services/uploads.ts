@@ -6,6 +6,16 @@ export const SOURCE_BUCKET = "source-uploads"
 export const MAX_FILE_BYTES = 25 * 1024 * 1024
 export const USER_QUOTA_BYTES = 500 * 1024 * 1024
 
+export class UploadDeletionError extends Error {
+  storageRemoved: boolean
+
+  constructor(message: string, storageRemoved: boolean) {
+    super(message)
+    this.name = "UploadDeletionError"
+    this.storageRemoved = storageRemoved
+  }
+}
+
 const MIME_BY_EXTENSION: Record<string, string> = {
   pdf: "application/pdf",
   pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
@@ -26,10 +36,13 @@ export function validateUpload(file: File) {
 }
 
 export async function listUploads(courseId?: string) {
-  let query = supabase.from("uploaded_files").select("*").order("created_at", { ascending: false })
+  let query = supabase.from("active_uploaded_files").select("*").order("created_at", { ascending: false })
   if (courseId) query = query.eq("course_id", courseId)
   const { data, error } = await query
-  if (error) throw error
+  if (error) {
+    console.error("Upload status update failed", error)
+    throw new Error("The file was uploaded, but Pathly couldn't finish preparing it. Refresh Upload Center before trying again.")
+  }
   return data as UploadedFileRecord[]
 }
 
@@ -61,13 +74,17 @@ export async function uploadSourceFile(input: {
     .insert(reservation)
     .select()
     .single()
-  if (reserveError) throw reserveError
+  if (reserveError) {
+    console.error("Upload reservation failed", reserveError)
+    throw new Error("We couldn't start this upload. Check your connection and try again.")
+  }
   const { error: uploadError } = await supabase.storage
     .from(SOURCE_BUCKET)
     .upload(path, input.file, { contentType: input.file.type, upsert: false })
   if (uploadError) {
     await supabase.from("uploaded_files").delete().eq("id", row.id)
-    throw uploadError
+    console.error("Source file upload failed", uploadError)
+    throw new Error("We couldn't upload this file. Check your connection and try again.")
   }
   const { data, error } = await supabase
     .from("uploaded_files")
@@ -80,12 +97,42 @@ export async function uploadSourceFile(input: {
 }
 
 export async function deleteUpload(row: UploadedFileRecord) {
+  const { data: { user }, error: userError } = await supabase.auth.getUser()
+  if (userError || !user) throw new UploadDeletionError("Your session is no longer valid. Sign in and try again.", false)
+  if (row.user_id !== user.id || !row.storage_path.startsWith(`${user.id}/`)) {
+    throw new UploadDeletionError("Pathly cannot delete a file that does not belong to your account.", false)
+  }
   const { error: storageError } = await supabase.storage
     .from(SOURCE_BUCKET)
     .remove([row.storage_path])
-  if (storageError) throw storageError
-  const { error } = await supabase.from("uploaded_files").delete().eq("id", row.id)
-  if (error) throw error
+  if (storageError) {
+    throw new UploadDeletionError("The source file could not be removed. Nothing else was deleted; please try again.", false)
+  }
+  const { data, error } = await supabase
+    .from("uploaded_files")
+    .delete()
+    .eq("id", row.id)
+    .eq("user_id", user.id)
+    .select("id")
+    .maybeSingle()
+  if (error) {
+    throw new UploadDeletionError("The source file was removed, but Pathly could not finish cleaning up its file record. Refresh and retry the deletion.", true)
+  }
+
+  // A missing row is already the desired final state. This also makes a retry safe
+  // after Storage succeeded but a prior response was interrupted.
+  return data?.id ?? row.id
+}
+
+export async function reassociateSyllabusCourse(processingId: string, courseId: string) {
+  const { error } = await supabase.rpc("reassociate_syllabus_processing_course", {
+    p_processing_id: processingId,
+    p_course_id: courseId,
+  })
+  if (error) {
+    console.error("Syllabus course reassociation failed", error)
+    throw new Error("We couldn't move this syllabus review to that course. Please try again.")
+  }
 }
 
 export async function downloadUpload(row: UploadedFileRecord) {
