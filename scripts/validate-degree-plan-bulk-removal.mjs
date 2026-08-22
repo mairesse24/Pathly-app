@@ -19,6 +19,11 @@ const guideRaw = readFileSync(
   "utf8",
 )
 const guide = guideRaw.replace(/^\s*--.*$/gm, "")
+const bulkImportRaw = readFileSync(
+  new URL("../supabase/migrations/20260822030000_remove_all_completed_courses.sql", import.meta.url),
+  "utf8",
+)
+const bulkImport = bulkImportRaw.replace(/^\s*--.*$/gm, "")
 
 // (1) Removing coursework does not remove the guide: remove_transcript_import's body must
 // never reference the degree-plan tables at all.
@@ -150,5 +155,25 @@ assert.ok(confirmIndex < removeCallIndex, "the confirmation prompt must happen b
 // (6) Both actions are wired into the Degree Plan page, not just Upload Center.
 assert.match(degreePlanner, /removeConfirmedGuide/, "Degree Plan must call the remove_confirmed_guide service")
 assert.match(degreePlanner, /removeTranscriptImport/, "Degree Plan must call the remove_transcript_import service")
+
+// (7) The bulk action is deliberately transcript-only. Manual and Degree Audit rows,
+// confirmed requirement applications, guides, and uploads are structurally unreachable.
+assert.match(bulkImport, /delete from public\.completed_courses\s+where user_id=\(select auth\.uid\(\)\) and source='transcript'/)
+assert.doesNotMatch(bulkImport, /source='manual'|source='degree_audit'/)
+assert.doesNotMatch(bulkImport, /user_degree_plans|user_degree_requirement_groups|user_degree_requirements|uploaded_files/)
+assert.match(bulkImport, /update public\.academic_record_imports set removed_at=now\(\)\s+where user_id=\(select auth\.uid\(\)\) and removed_at is null/)
+assert.match(bulkImport, /security invoker/)
+assert.match(bulkImport, /revoke all on function public\.remove_all_imported_coursework\(\) from public,anon/)
+assert.match(bulkImport, /grant execute on function public\.remove_all_imported_coursework\(\) to authenticated/)
+
+// The RPC is a single Postgres transaction: any statement failure rolls the whole action
+// back. The UI confirms before calling it, disables repeat submissions, and reloads all
+// Degree Plan sources after success. Cancelling the native confirmation returns first.
+const removeAllFn = degreePlanner.slice(degreePlanner.indexOf("async function removeAllImports"), degreePlanner.indexOf("async function removeAllImports") + 1800)
+assert.match(removeAllFn, /if \(!window\.confirm\([\s\S]*\)\) return/)
+assert.ok(removeAllFn.indexOf("window.confirm") < removeAllFn.indexOf("await removeAllImportedCoursework"))
+assert.match(degreePlanner, /disabled=\{removingAllImports\}/)
+assert.match(removeAllFn, /await load\(\)/)
+assert.match(degreePlanner, /deleteCompletedCourse/, "individual course deletion must remain available")
 
 console.log("Degree Plan bulk-removal actions: guide/coursework isolation, manual-row and unrelated-import preservation, and confirm-before-remove checks passed")

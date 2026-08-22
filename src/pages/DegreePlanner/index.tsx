@@ -4,7 +4,7 @@ import { PageHeader } from "../../components/layout/PageHeader"
 import { Button } from "../../components/ui/Button"
 import { Card } from "../../components/ui/Card"
 import { useProfile } from "../../context/ProfileContext"
-import { calculateDegreeProgress, deleteCompletedCourse, getActiveUserDegreePlan, getLatestDegreeAuditUploadState, getRequirementGroups, listCompletedCourses, matchVerifiedProgram, removeConfirmedGuide, saveCompletedCourse, type CourseInput, type DegreeAuditUploadState } from "../../services/degreePlanning"
+import { calculateDegreeProgress, deleteCompletedCourse, getActiveUserDegreePlan, getLatestDegreeAuditUploadState, getRequirementGroups, listCompletedCourses, matchVerifiedProgram, removeAllImportedCoursework, removeConfirmedGuide, saveCompletedCourse, type CourseInput, type DegreeAuditUploadState } from "../../services/degreePlanning"
 import { listTranscriptImports, previewTranscriptImportRemoval, removeTranscriptImport, type TranscriptImport } from "../../services/transcriptImports"
 import type { CompletedCourse, DegreeProgram, DegreeProgramMatch, RequirementGroup, UserDegreePlan } from "../../types/degreePlanning"
 import { formatCatalogYear } from "../../utils/catalogYear"
@@ -36,6 +36,9 @@ export function DegreePlannerPage() {
   const [guideMessage, setGuideMessage] = useState("")
   const [guideError, setGuideError] = useState("")
   const [removingGuide, setRemovingGuide] = useState(false)
+  const [courseworkMessage, setCourseworkMessage] = useState("")
+  const [courseworkError, setCourseworkError] = useState("")
+  const [removingAllImports, setRemovingAllImports] = useState(false)
 
   async function load() {
     if (profileLoading) return
@@ -129,6 +132,29 @@ export function DegreePlannerPage() {
     }
   }
 
+  // Scoped to the caller (auth.uid()) -- clears all transcript-sourced completed_courses
+  // rows and active transcript-import history in one atomic RPC. Manual coursework,
+  // Degree Audit coursework/applications, confirmed guides, and uploads remain untouched.
+  // See remove_all_imported_coursework in
+  // supabase/migrations/20260822030000_remove_all_completed_courses.sql.
+  async function removeAllImports() {
+    const importedCount = courses.filter((course) => course.source === "transcript").length
+    if (!importedCount && !transcriptImports.length) return
+    if (!window.confirm(`Remove all transcript-imported coursework? This permanently deletes ${importedCount} imported course record${importedCount === 1 ? "" : "s"} and clears ${transcriptImports.length} active transcript import${transcriptImports.length === 1 ? "" : "s"}. Manually entered coursework, Degree Audit coursework and requirement applications, your confirmed program guide, and uploaded files will remain. This cannot be undone.`)) return
+    setRemovingAllImports(true)
+    setCourseworkMessage("")
+    setCourseworkError("")
+    try {
+      const result = await removeAllImportedCoursework()
+      await load()
+      setCourseworkMessage(`${result.courses_removed} imported course record${result.courses_removed === 1 ? "" : "s"} removed.${result.imports_cleared ? ` ${result.imports_cleared} transcript import${result.imports_cleared === 1 ? "" : "s"} cleared.` : ""} Manual and Degree Audit coursework, requirement applications, and your confirmed program guide were not changed.`)
+    } catch (reason) {
+      setCourseworkError(reason instanceof Error ? reason.message : "Unable to remove imported coursework.")
+    } finally {
+      setRemovingAllImports(false)
+    }
+  }
+
   useEffect(() => { void load() }, [profileLoading, profile?.university, profile?.major, profile?.catalog_year])
   const progress = useMemo(() => program ? calculateDegreeProgress(program, groups, courses, auditPlan) : null, [program, groups, courses, auditPlan])
   const auditNotice = degreeAuditNotice(latestAuditUpload)
@@ -184,6 +210,9 @@ export function DegreePlannerPage() {
         <div className="form-actions completed-course-actions"><Button disabled={saving}>{saving ? "Saving…" : editing ? "Save changes" : "Add course"}</Button>{editing && <Button type="button" variant="quiet" onClick={() => { setEditing(null); setForm(empty) }}>Cancel</Button>}</div>
       </form>
       {courses.length ? <div className="completed-course-list">{courses.map((course) => <div key={course.id}><span><strong>{course.course_code} · {course.course_title}</strong><small>{course.credit_hours} credits · {course.status === "completed" ? "Completed" : "In progress"}{course.term ? ` · ${course.term} ${course.year || ""}` : ""}</small></span><div className="form-actions"><Button variant="quiet" onClick={() => edit(course)}>Edit</Button><Button variant="quiet" onClick={() => void remove(course.id)}>Delete</Button></div></div>)}</div> : <p className="completed-courses-empty">No completed courses added yet.</p>}
+      {(courses.some((course) => course.source === "transcript") || transcriptImports.length > 0) && <div className="danger-zone-inline"><p>Remove every transcript import at once. Manually entered and Degree Audit coursework remain.</p><Button variant="secondary" className="btn-danger" disabled={removingAllImports} onClick={() => void removeAllImports()}>{removingAllImports ? "Removing…" : "Remove all imported coursework"}</Button></div>}
+      {courseworkMessage && <p className="save-success" role="status">{courseworkMessage}</p>}
+      {courseworkError && <p className="form-message" role="alert">{courseworkError}</p>}
     </Card>
     {importsError && <p className="form-message section-error" role="alert">{importsError}</p>}
     {transcriptImports.length > 0 && <Card><p className="eyebrow">Transcript imports</p><h3>Remove imported coursework</h3><p>Removing an import affects only coursework recorded from that specific transcript. Manually added coursework, other transcript imports, and unrelated course data are not removed.</p>

@@ -64,6 +64,12 @@ export async function removeConfirmedGuide(planId: string) {
   if (error) throw error
   return data as ConfirmedGuideRemoval
 }
+export type ImportedCourseworkRemoval = { courses_removed: number; imports_cleared: number }
+export async function removeAllImportedCoursework() {
+  const { data, error } = await supabase.rpc("remove_all_imported_coursework")
+  if (error) throw error
+  return data as ImportedCourseworkRemoval
+}
 export type DegreeAuditUploadState = Pick<UploadedFileRecord, "id" | "processing_status" | "processing_error_code" | "created_at">
 export async function getLatestDegreeAuditUploadState() {
   const { data, error } = await supabase.from("uploaded_files")
