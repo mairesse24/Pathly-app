@@ -39,7 +39,10 @@ export async function listUploads(courseId?: string) {
   let query = supabase.from("active_uploaded_files").select("*").order("created_at", { ascending: false })
   if (courseId) query = query.eq("course_id", courseId)
   const { data, error } = await query
-  if (error) throw error
+  if (error) {
+    console.error("Upload status update failed", error)
+    throw new Error("The file was uploaded, but Pathly couldn't finish preparing it. Refresh Upload Center before trying again.")
+  }
   return data as UploadedFileRecord[]
 }
 
@@ -71,13 +74,17 @@ export async function uploadSourceFile(input: {
     .insert(reservation)
     .select()
     .single()
-  if (reserveError) throw reserveError
+  if (reserveError) {
+    console.error("Upload reservation failed", reserveError)
+    throw new Error("We couldn't start this upload. Check your connection and try again.")
+  }
   const { error: uploadError } = await supabase.storage
     .from(SOURCE_BUCKET)
     .upload(path, input.file, { contentType: input.file.type, upsert: false })
   if (uploadError) {
     await supabase.from("uploaded_files").delete().eq("id", row.id)
-    throw uploadError
+    console.error("Source file upload failed", uploadError)
+    throw new Error("We couldn't upload this file. Check your connection and try again.")
   }
   const { data, error } = await supabase
     .from("uploaded_files")
@@ -122,7 +129,10 @@ export async function reassociateSyllabusCourse(processingId: string, courseId: 
     p_processing_id: processingId,
     p_course_id: courseId,
   })
-  if (error) throw error
+  if (error) {
+    console.error("Syllabus course reassociation failed", error)
+    throw new Error("We couldn't move this syllabus review to that course. Please try again.")
+  }
 }
 
 export async function downloadUpload(row: UploadedFileRecord) {

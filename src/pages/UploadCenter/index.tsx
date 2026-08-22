@@ -87,7 +87,9 @@ export function UploadCenterPage() {
   const [supportingLoadError, setSupportingLoadError] = useState("")
 
   const [processingId, setProcessingId] = useState("")
+  const [deletingId, setDeletingId] = useState("")
   const [latestUploadedId, setLatestUploadedId] = useState("")
+  const processingInFlight = useRef(new Set<string>())
 
   const [state, setState] =
     useState<"idle" | "validating" | "uploading" | "success" | "error">("idle")
@@ -225,6 +227,8 @@ export function UploadCenterPage() {
   }
 
   async function process(row: UploadedFileRecord) {
+    if (processingInFlight.current.has(row.id)) return
+    processingInFlight.current.add(row.id)
     setProcessingId(row.id)
     setMessage("")
 
@@ -251,22 +255,11 @@ export function UploadCenterPage() {
         ),
       )
 
-      setResults((current) => [
-        result,
-        ...current.filter((item) => item.upload_id !== row.id),
-      ])
-
-      setFiles((current) =>
-        current.map((item) =>
-          item.id === row.id
-            ? {
-                ...item,
-                processing_status: "ready_for_review",
-                processing_stage: null,
-              }
-            : item,
-        ),
-      )
+      const [refreshedUploads, refreshedResults] = await Promise.allSettled([listUploads(), listProcessingResults()])
+      if (refreshedUploads.status === "fulfilled") setFiles(refreshedUploads.value)
+      else setFiles((current) => current.map((item) => item.id === row.id ? { ...item, processing_status: "ready_for_review", processing_stage: null } : item))
+      if (refreshedResults.status === "fulfilled") setResults(refreshedResults.value)
+      else setResults((current) => [result, ...current.filter((item) => item.upload_id !== row.id)])
 
       setState("success")
       setMessage(
@@ -277,35 +270,27 @@ export function UploadCenterPage() {
             : "Your candidate coursework is ready to review.",
       )
     } catch {
-      const refreshed = await listUploads().catch(() => null)
-      const failed = refreshed?.find((item) => item.id === row.id)
-      setFiles((current) =>
-        current.map((item) =>
-          item.id === row.id
-            ? {
-                ...item,
-                processing_status: "processing_failed",
-                processing_stage: null,
-                processing_error_code: failed?.processing_error_code ?? item.processing_error_code,
-                error_message: failed?.error_message ?? item.error_message,
-              }
-            : item,
-        ),
-      )
+      const [refreshedUploads, refreshedResults] = await Promise.allSettled([listUploads(), listProcessingResults()])
+      if (refreshedUploads.status === "fulfilled") setFiles(refreshedUploads.value)
+      else setFiles((current) => current.map((item) => item.id === row.id ? { ...item, processing_status: "processing_failed", processing_stage: null } : item))
+      if (refreshedResults.status === "fulfilled") setResults(refreshedResults.value)
 
       setState("idle")
       setMessage("")
     } finally {
+      processingInFlight.current.delete(row.id)
       setProcessingId("")
     }
   }
 
   async function remove(row: UploadedFileRecord) {
+    if (deletingId || processingInFlight.current.has(row.id) || row.processing_status === "processing") return
     if (
       !window.confirm(`Delete ${row.original_filename}? This cannot be undone.`)
     )
       return
 
+    setDeletingId(row.id)
     try {
       await deleteUpload(row)
       setFiles((current) => current.filter((item) => item.id !== row.id))
@@ -326,6 +311,8 @@ export function UploadCenterPage() {
           ? reason.message
           : "Unable to delete the file.",
       )
+    } finally {
+      setDeletingId("")
     }
   }
 
@@ -530,9 +517,10 @@ export function UploadCenterPage() {
                       )}
                       <Button
                         variant="secondary"
+                        disabled={isProcessing || deletingId !== ""}
                         onClick={() => void remove(row)}
                       >
-                        Delete
+                        {deletingId === row.id ? "Deleting…" : "Delete"}
                       </Button>
                     </div>
                   </Card>
@@ -561,6 +549,10 @@ export function UploadCenterPage() {
                               : item,
                           ),
                         )
+                        void Promise.allSettled([listUploads(), listProcessingResults()]).then(([uploads, processing]) => {
+                          if (uploads.status === "fulfilled") setFiles(uploads.value)
+                          if (processing.status === "fulfilled") setResults(processing.value)
+                        })
                       }}
                     />
                   )}
